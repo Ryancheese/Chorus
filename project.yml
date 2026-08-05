@@ -1,0 +1,63 @@
+name: StereoSync
+options:
+  bundleIdPrefix: com.stereosync
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+
+packages:
+  StereoSyncCore:
+    path: .
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+targets:
+  Host:
+    type: application
+    platform: macOS
+    sources:
+      - path: Apps/Host/Host
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stereosync.host
+        PRODUCT_NAME: StereoSync Host
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: StereoSync 需要局域网发现并连接 iPhone / iPad 扬声器。
+        INFOPLIST_KEY_NSBonjourServices: '["_stereosync._tcp"]'
+        INFOPLIST_KEY_CFBundleDisplayName: StereoSync Host
+        GENERATE_INFOPLIST_FILE: YES
+        LD_RUNPATH_SEARCH_PATHS: ["@executable_path/../Frameworks"]
+        CODE_SIGN_ENTITLEMENTS: Apps/Host/Host/Host.entitlements
+    dependencies:
+      - package: StereoSyncCore
+        product: StereoSyncCore
+    entitlements:
+      path: Apps/Host/Host/Host.entitlements
+
+  Speaker:
+    type: application
+    platform: iOS
+    sources:
+      - path: Apps/Speaker/Speaker
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stereosync.speaker
+        PRODUCT_NAME: StereoSync Speaker
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: StereoSync 需要被 Mac 在局域网中发现并接收同步音频。
+        INFOPLIST_KEY_NSBonjourServices: '["_stereosync._tcp"]'
+        INFOPLIST_KEY_UIBackgroundModes: '["audio"]'
+        INFOPLIST_KEY_CFBundleDisplayName: StereoSync
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        LD_RUNPATH_SEARCH_PATHS: ["@executable_path/Frameworks"]
+        CODE_SIGN_ENTITLEMENTS: Apps/Speaker/Speaker/Speaker.entitlements
+    dependencies:
+      - package: StereoSyncCore
+        product: StereoSyncCore
+    entitlements:
+      path: Apps/Speaker/Speaker/Speaker.entitlements
