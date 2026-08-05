@@ -41,10 +41,8 @@ public final class HostSessionController: ObservableObject {
         }
         statusText = "正在连接 \(peer.name)…"
         phase = .connected
-        let sync = SyncConnection.connect(to: peer.nwEndpoint)
-        // Preserve a stable label for dedupe.
-        let labeled = SyncConnection(connection: sync.connection, remoteLabel: peer.endpointDebug)
-        attach(labeled, displayName: peer.name)
+        let nw = NWConnection(to: peer.nwEndpoint, using: .tcp)
+        attach(SyncConnection(connection: nw, remoteLabel: peer.endpointDebug), displayName: peer.name)
     }
 
     public func attachIncoming(_ connection: NWConnection) {
