@@ -86,6 +86,14 @@ struct SpeakerRootView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: 280)
 
+                if isBroadcasting && session.hostName == nil {
+                    Text("若 Mac 搜不到：设置 → StereoSync → 打开「本地网络」")
+                        .font(.system(.caption, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                }
+
                 if session.hostName != nil || session.clockOffsetMs != nil {
                     HStack(spacing: 18) {
                         if let host = session.hostName {

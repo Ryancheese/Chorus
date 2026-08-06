@@ -121,8 +121,18 @@ struct HostRootView: View {
             VStack(alignment: .leading, spacing: 16) {
                 sectionTitle("附近扬声器", systemImage: "iphone.gen3")
 
+                Text(browser.statusText)
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                if let error = browser.lastError {
+                    Text(error)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.red.opacity(0.85))
+                }
+
                 if browser.peers.isEmpty {
-                    emptyHint("打开 iPhone / iPad 上的 StereoSync，点「开始广播」")
+                    emptyHint("1. 手机点「开始广播」并允许本地网络\n2. Mac 与手机同一 Wi‑Fi，关闭 VPN")
                 } else {
                     ForEach(browser.peers) { peer in
                         peerRow(peer)
