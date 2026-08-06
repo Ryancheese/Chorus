@@ -87,11 +87,22 @@ struct SpeakerRootView: View {
                     .frame(maxWidth: 280)
 
                 if isBroadcasting && session.hostName == nil {
-                    Text("若 Mac 搜不到：设置 → StereoSync → 打开「本地网络」")
-                        .font(.system(.caption, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
+                    VStack(spacing: 6) {
+                        if let address = session.connectionAddress {
+                            Text("本机地址")
+                                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(address)
+                                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                                .foregroundStyle(GlassTheme.accent)
+                                .textSelection(.enabled)
+                        }
+                        Text("把上面的 IP 填进 Mac「手动连接」")
+                            .font(.system(.caption, design: .rounded))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 4)
                 }
 
                 if session.hostName != nil || session.clockOffsetMs != nil {

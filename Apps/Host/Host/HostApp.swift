@@ -7,7 +7,7 @@ struct HostApp: App {
     var body: some Scene {
         WindowGroup {
             HostRootView()
-                .frame(minWidth: 640, minHeight: 620)
+                .frame(minWidth: 640, minHeight: 700)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -23,6 +23,8 @@ struct HostRootView: View {
     @State private var isImporterPresented = false
     @State private var connectedEndpoints: Set<String> = []
     @State private var appeared = false
+    @State private var manualHost = ""
+    @State private var manualPort = String(SyncBonjour.controlPort)
 
     private var canPlay: Bool {
         loadedTrack != nil && !session.connectedSpeakers.isEmpty
@@ -132,11 +134,30 @@ struct HostRootView: View {
                 }
 
                 if browser.peers.isEmpty {
-                    emptyHint("1. 手机点「开始广播」并允许本地网络\n2. Mac 与手机同一 Wi‑Fi，关闭 VPN")
+                    emptyHint("自动发现失败时，看手机上的 IP，用下方手动连接")
                 } else {
                     ForEach(browser.peers) { peer in
                         peerRow(peer)
                     }
+                }
+
+                Divider().opacity(0.25)
+
+                sectionTitle("手动连接", systemImage: "keyboard")
+                HStack(spacing: 10) {
+                    TextField("手机 IP，如 192.168.1.8", text: $manualHost)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 180)
+                    TextField("端口", text: $manualPort)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 72)
+                    Button("连接") {
+                        let port = UInt16(manualPort) ?? SyncBonjour.controlPort
+                        session.connect(host: manualHost, port: port)
+                        connectedEndpoints.insert("\(manualHost):\(port)")
+                    }
+                    .buttonStyle(GlassSecondaryButtonStyle())
+                    .disabled(manualHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
 
                 Divider().opacity(0.25)

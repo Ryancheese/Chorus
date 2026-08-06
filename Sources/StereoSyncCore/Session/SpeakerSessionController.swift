@@ -25,6 +25,7 @@ public final class SpeakerSessionController: ObservableObject {
     @Published public private(set) var sessionTitle: String?
     @Published public private(set) var clockOffsetMs: Double?
     @Published public private(set) var isAdvertising = false
+    @Published public private(set) var connectionAddress: String?
 
     public let localDevice: DeviceInfo
     private let advertiser: PeerAdvertiser
@@ -49,11 +50,19 @@ public final class SpeakerSessionController: ObservableObject {
         advertiser.start()
         isAdvertising = true
         phase = .advertising
+        refreshConnectionAddress()
         statusText = "等待 Mac 连接…"
         if let err = advertiser.lastError {
             lastError = err
             phase = .error
             statusText = err
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            self.refreshConnectionAddress()
+            if let err = self.advertiser.lastError {
+                self.lastError = err
+            }
         }
     }
 
@@ -63,10 +72,17 @@ public final class SpeakerSessionController: ObservableObject {
         connection = nil
         advertiser.stop()
         isAdvertising = false
+        connectionAddress = nil
         phase = .idle
         statusText = "已停止"
         hostName = nil
         sessionTitle = nil
+    }
+
+    private func refreshConnectionAddress() {
+        let ip = advertiser.localIPv4 ?? LocalNetworkAddress.primaryIPv4() ?? "未知IP"
+        let port = advertiser.listeningPort
+        connectionAddress = "\(ip):\(port)"
     }
 
     private func accept(_ nw: NWConnection) {

@@ -46,6 +46,27 @@ public final class HostSessionController: ObservableObject {
         attach(SyncConnection(connection: nw, remoteLabel: peer.endpointDebug), displayName: peer.name)
     }
 
+    /// Manual LAN connect when Bonjour discovery is blocked.
+    public func connect(host: String, port: UInt16 = SyncBonjour.controlPort) {
+        let trimmed = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            lastError = "请输入手机显示的 IP"
+            return
+        }
+        let label = "\(trimmed):\(port)"
+        if connections.contains(where: { $0.remoteLabel == label }) {
+            return
+        }
+        statusText = "正在连接 \(label)…"
+        phase = .connected
+        let endpoint = NWEndpoint.hostPort(
+            host: NWEndpoint.Host(trimmed),
+            port: NWEndpoint.Port(rawValue: port)!
+        )
+        let nw = NWConnection(to: endpoint, using: .tcp)
+        attach(SyncConnection(connection: nw, remoteLabel: label), displayName: label)
+    }
+
     public func attachIncoming(_ connection: NWConnection) {
         attach(SyncConnection(connection: connection, remoteLabel: "speaker-incoming"), displayName: "Speaker")
     }

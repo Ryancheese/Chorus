@@ -37,7 +37,8 @@ public final class PeerBrowser: ObservableObject {
         stop()
         statusText = "正在搜索局域网扬声器…"
         lastError = nil
-        let descriptor = NWBrowser.Descriptor.bonjour(type: SyncBonjour.type, domain: SyncBonjour.domain)
+        // `nil` domain searches default browse domains (more reliable than hardcoding local.)
+        let descriptor = NWBrowser.Descriptor.bonjour(type: SyncBonjour.type, domain: nil)
         let browser = NWBrowser(for: descriptor, using: .tcp)
 
         browser.stateUpdateHandler = { [weak self] (state: NWBrowser.State) in
@@ -69,7 +70,7 @@ public final class PeerBrowser: ObservableObject {
             Task { @MainActor in
                 self?.peers = peers
                 if peers.isEmpty {
-                    self?.statusText = "未发现设备（确认手机已点「开始广播」）"
+                    self?.statusText = "未发现设备，可用下方手动 IP 连接"
                 } else {
                     self?.statusText = "发现 \(peers.count) 台设备"
                 }
@@ -86,7 +87,6 @@ public final class PeerBrowser: ObservableObject {
         peers = []
     }
 
-    /// Bonjour callbacks arrive off the main actor; keep this conversion nonisolated.
     nonisolated private static func makePeer(from result: NWBrowser.Result) -> DiscoveredPeer? {
         switch result.endpoint {
         case .service(let name, _, _, _):
@@ -101,6 +101,8 @@ public final class PeerBrowser: ObservableObject {
 public final class PeerAdvertiser: ObservableObject {
     @Published public private(set) var isAdvertising = false
     @Published public private(set) var lastError: String?
+    @Published public private(set) var listeningPort: UInt16 = SyncBonjour.controlPort
+    @Published public private(set) var localIPv4: String?
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "stereosync.advertiser")
@@ -115,23 +117,29 @@ public final class PeerAdvertiser: ObservableObject {
         stop()
         lastError = nil
         isAdvertising = false
+        localIPv4 = LocalNetworkAddress.primaryIPv4()
+        listeningPort = SyncBonjour.controlPort
         do {
-            // Let the system pick a free port; Bonjour advertises the real one.
-            let listener = try NWListener(using: .tcp)
+            // Fixed port so Mac can connect manually when Bonjour is blocked.
+            let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: SyncBonjour.controlPort)!)
             listener.service = NWListener.Service(name: deviceName, type: SyncBonjour.type)
 
-            // NWListener.stateUpdateHandler takes a single NWListener.State.
             listener.stateUpdateHandler = { [weak self] (state: NWListener.State) in
                 Task { @MainActor in
+                    guard let self else { return }
                     switch state {
                     case .ready:
-                        self?.isAdvertising = true
-                        self?.lastError = nil
+                        self.isAdvertising = true
+                        self.lastError = nil
+                        if let port = self.listener?.port?.rawValue {
+                            self.listeningPort = port
+                        }
+                        self.localIPv4 = LocalNetworkAddress.primaryIPv4()
                     case .failed(let error):
-                        self?.isAdvertising = false
-                        self?.lastError = error.localizedDescription
+                        self.isAdvertising = false
+                        self.lastError = error.localizedDescription
                     case .cancelled:
-                        self?.isAdvertising = false
+                        self.isAdvertising = false
                     default:
                         break
                     }
@@ -156,5 +164,6 @@ public final class PeerAdvertiser: ObservableObject {
         listener?.cancel()
         listener = nil
         isAdvertising = false
+        localIPv4 = nil
     }
 }
