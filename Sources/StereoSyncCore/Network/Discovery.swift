@@ -25,6 +25,8 @@ public struct DiscoveredPeer: Identifiable, Hashable, Sendable {
 @MainActor
 public final class PeerBrowser: ObservableObject {
     @Published public private(set) var peers: [DiscoveredPeer] = []
+    @Published public private(set) var statusText = "正在搜索…"
+    @Published public private(set) var lastError: String?
 
     private var browser: NWBrowser?
     private let queue = DispatchQueue(label: "stereosync.browser")
@@ -33,14 +35,28 @@ public final class PeerBrowser: ObservableObject {
 
     public func start() {
         stop()
+        statusText = "正在搜索局域网扬声器…"
+        lastError = nil
         let descriptor = NWBrowser.Descriptor.bonjour(type: SyncBonjour.type, domain: SyncBonjour.domain)
         let browser = NWBrowser(for: descriptor, using: .tcp)
 
-        // NWBrowser.stateUpdateHandler takes a single NWBrowser.State.
-        browser.stateUpdateHandler = { (_ state: NWBrowser.State) in
-            // Results handler drives UI; keep quiet unless failed.
-            if case .failed(let error) = state {
-                NSLog("StereoSync browser failed: \(error)")
+        browser.stateUpdateHandler = { [weak self] (state: NWBrowser.State) in
+            Task { @MainActor in
+                switch state {
+                case .ready:
+                    self?.statusText = "已开始搜索，等待设备广播…"
+                    self?.lastError = nil
+                case .failed(let error):
+                    self?.statusText = "搜索失败"
+                    self?.lastError = error.localizedDescription
+                case .cancelled:
+                    self?.statusText = "搜索已停止"
+                case .waiting(let error):
+                    self?.statusText = "等待本地网络权限…"
+                    self?.lastError = error.localizedDescription
+                default:
+                    break
+                }
             }
         }
 
@@ -52,6 +68,11 @@ public final class PeerBrowser: ObservableObject {
 
             Task { @MainActor in
                 self?.peers = peers
+                if peers.isEmpty {
+                    self?.statusText = "未发现设备（确认手机已点「开始广播」）"
+                } else {
+                    self?.statusText = "发现 \(peers.count) 台设备"
+                }
             }
         }
 
@@ -92,9 +113,12 @@ public final class PeerAdvertiser: ObservableObject {
 
     public func start() {
         stop()
+        lastError = nil
+        isAdvertising = false
         do {
-            let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: SyncBonjour.controlPort)!)
-            listener.service = NWListener.Service(name: deviceName, type: SyncBonjour.type, domain: SyncBonjour.domain)
+            // Let the system pick a free port; Bonjour advertises the real one.
+            let listener = try NWListener(using: .tcp)
+            listener.service = NWListener.Service(name: deviceName, type: SyncBonjour.type)
 
             // NWListener.stateUpdateHandler takes a single NWListener.State.
             listener.stateUpdateHandler = { [weak self] (state: NWListener.State) in
