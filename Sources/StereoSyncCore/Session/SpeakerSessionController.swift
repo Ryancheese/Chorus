@@ -34,9 +34,10 @@ public final class SpeakerSessionController: ObservableObject {
     private let player = SyncAudioPlayer()
     private var sessionID: UUID?
 
-    public init(deviceName: String = SpeakerSessionController.defaultSpeakerName()) {
-        localDevice = DeviceInfo(id: UUID().uuidString, name: deviceName, role: .speaker)
-        advertiser = PeerAdvertiser(deviceName: deviceName)
+    public init(deviceName: String? = nil) {
+        let resolvedName = deviceName ?? Self.defaultSpeakerName()
+        localDevice = DeviceInfo(id: UUID().uuidString, name: resolvedName, role: .speaker)
+        advertiser = PeerAdvertiser(deviceName: resolvedName)
         advertiser.onConnection = { [weak self] nw in
             Task { @MainActor in
                 self?.accept(nw)

@@ -27,10 +27,11 @@ public final class HostSessionController: ObservableObject {
     private var currentSessionID: UUID?
     private var localPlayer: SyncAudioPlayer?
 
-    public init(deviceName: String = HostSessionController.defaultHostName()) {
+    public init(deviceName: String? = nil) {
+        let resolvedName = deviceName ?? Self.defaultHostName()
         localDevice = DeviceInfo(
             id: UUID().uuidString,
-            name: deviceName,
+            name: resolvedName,
             role: .host
         )
     }
