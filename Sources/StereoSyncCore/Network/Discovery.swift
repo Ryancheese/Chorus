@@ -35,19 +35,26 @@ public final class PeerBrowser: ObservableObject {
         stop()
         let descriptor = NWBrowser.Descriptor.bonjour(type: SyncBonjour.type, domain: SyncBonjour.domain)
         let browser = NWBrowser(for: descriptor, using: .tcp)
-        browser.stateUpdateHandler = { [weak self] _, _, _ in
-            // Intentionally quiet; results handler drives UI.
-            _ = self
-        }
-        browser.browseResultsChangedHandler = { [weak self] results, _ in
-            Task { @MainActor in
-                self?.peers = results.compactMap { result in
-                    guard case .service(let name, _, _, _) = result.endpoint else { return nil }
-                    return DiscoveredPeer(name: name, endpoint: result.endpoint)
-                }
-                .sorted { $0.name < $1.name }
+
+        // NWBrowser.stateUpdateHandler takes a single NWBrowser.State.
+        browser.stateUpdateHandler = { (_ state: NWBrowser.State) in
+            // Results handler drives UI; keep quiet unless failed.
+            if case .failed(let error) = state {
+                NSLog("StereoSync browser failed: \(error)")
             }
         }
+
+        browser.browseResultsChangedHandler = { [weak self] (results: Set<NWBrowser.Result>, _: Set<NWBrowser.Result.Change>) in
+            let peers = results.compactMap { (result: NWBrowser.Result) -> DiscoveredPeer? in
+                Self.peer(from: result)
+            }
+            .sorted { $0.name < $1.name }
+
+            Task { @MainActor in
+                self?.peers = peers
+            }
+        }
+
         browser.start(queue: queue)
         self.browser = browser
     }
@@ -56,6 +63,15 @@ public final class PeerBrowser: ObservableObject {
         browser?.cancel()
         browser = nil
         peers = []
+    }
+
+    private static func peer(from result: NWBrowser.Result) -> DiscoveredPeer? {
+        switch result.endpoint {
+        case .service(let name, _, _, _):
+            return DiscoveredPeer(name: name, endpoint: result.endpoint)
+        default:
+            return nil
+        }
     }
 }
 
@@ -78,7 +94,9 @@ public final class PeerAdvertiser: ObservableObject {
         do {
             let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: SyncBonjour.controlPort)!)
             listener.service = NWListener.Service(name: deviceName, type: SyncBonjour.type, domain: SyncBonjour.domain)
-            listener.stateUpdateHandler = { [weak self] _, state, _ in
+
+            // NWListener.stateUpdateHandler takes a single NWListener.State.
+            listener.stateUpdateHandler = { [weak self] (state: NWListener.State) in
                 Task { @MainActor in
                     switch state {
                     case .ready:
@@ -94,11 +112,13 @@ public final class PeerAdvertiser: ObservableObject {
                     }
                 }
             }
-            listener.newConnectionHandler = { [weak self] connection in
+
+            listener.newConnectionHandler = { [weak self] (connection: NWConnection) in
                 Task { @MainActor in
                     self?.onConnection?(connection)
                 }
             }
+
             listener.start(queue: queue)
             self.listener = listener
         } catch {
