@@ -46,7 +46,7 @@ public final class PeerBrowser: ObservableObject {
 
         browser.browseResultsChangedHandler = { [weak self] (results: Set<NWBrowser.Result>, _: Set<NWBrowser.Result.Change>) in
             let peers = results.compactMap { (result: NWBrowser.Result) -> DiscoveredPeer? in
-                Self.peer(from: result)
+                Self.makePeer(from: result)
             }
             .sorted { $0.name < $1.name }
 
@@ -65,7 +65,8 @@ public final class PeerBrowser: ObservableObject {
         peers = []
     }
 
-    private static func peer(from result: NWBrowser.Result) -> DiscoveredPeer? {
+    /// Bonjour callbacks arrive off the main actor; keep this conversion nonisolated.
+    nonisolated private static func makePeer(from result: NWBrowser.Result) -> DiscoveredPeer? {
         switch result.endpoint {
         case .service(let name, _, _, _):
             return DiscoveredPeer(name: name, endpoint: result.endpoint)
