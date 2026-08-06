@@ -56,4 +56,32 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNotNil(best)
         XCTAssertEqual(best!.roundTrip, 0.04, accuracy: 0.0001)
     }
+
+    func testStopAcknowledgementRoundTrip() throws {
+        let id = UUID()
+        let data = try MessageCodec.encodeControl(.stopAcknowledged(sessionID: id))
+        let decoded = try MessageCodec.decodeControl(data)
+        guard case .stopAcknowledged(let receivedID) = decoded else {
+            return XCTFail("expected stop acknowledgement")
+        }
+        XCTAssertEqual(receivedID, id)
+    }
+
+    @MainActor
+    func testJitterBufferWaitsForTargetThenDrainsInOrder() {
+        let id = UUID()
+        let buffer = AudioJitterBuffer(sampleRate: 100, targetDuration: 0.2)
+        let first = AudioChunkHeader(sessionID: id, sequence: 0, sampleIndex: 0, sampleCount: 10, hostPlayAt: 0)
+        let second = AudioChunkHeader(sessionID: id, sequence: 1, sampleIndex: 10, sampleCount: 10, hostPlayAt: 0.1)
+
+        XCTAssertTrue(buffer.append(header: first, pcm: Data()).isEmpty)
+        let ready = buffer.append(header: second, pcm: Data())
+        XCTAssertEqual(ready.map(\.header.sequence), [0, 1])
+    }
+
+    func testStableLeadTimeNeverDropsBelowBufferRequirement() {
+        var leadTime = AdaptiveLeadTime()
+        leadTime.record(roundTrip: 0.01)
+        XCTAssertGreaterThanOrEqual(leadTime.recommendedLeadTime, 1.2)
+    }
 }

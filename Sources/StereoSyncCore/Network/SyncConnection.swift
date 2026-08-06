@@ -58,10 +58,13 @@ public final class SyncConnection: @unchecked Sendable {
         }
     }
 
-    public func sendAudio(header: AudioChunkHeader, pcm: Data) {
+    /// Sends a single audio frame and waits until Network.framework has processed it.
+    /// Keeping only one frame in flight lets a subsequent control message (such as
+    /// stop playback) reach the peer promptly instead of waiting behind a full track.
+    public func sendAudio(header: AudioChunkHeader, pcm: Data) async {
         do {
             let data = try MessageCodec.encodeAudioFrame(header: header, pcm: pcm)
-            sendFrame(data)
+            await sendFrameAndWait(data)
         } catch {
             emit(.disconnected("encode audio failed: \(error)"))
         }
@@ -74,6 +77,18 @@ public final class SyncConnection: @unchecked Sendable {
                 self?.emit(.disconnected(error.localizedDescription))
             }
         })
+    }
+
+    private func sendFrameAndWait(_ payload: Data) async {
+        let framed = FrameIO.pack(payload)
+        await withCheckedContinuation { continuation in
+            connection.send(content: framed, completion: .contentProcessed { [weak self] error in
+                if let error {
+                    self?.emit(.disconnected(error.localizedDescription))
+                }
+                continuation.resume()
+            })
+        }
     }
 
     private func receiveLoop() {

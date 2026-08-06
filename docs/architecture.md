@@ -14,11 +14,12 @@ Speaker: NWListener + Bonjour _stereosync._tcp:17482
 Host:    收到 NWConnection 后建立 SyncConnection
 ```
 
-所有控制消息与音频帧共用一条 TCP，使用 4 字节大端长度前缀分帧。
+Host 会向同一个监听端口建立两条 TCP：控制通道只传状态与时钟消息，音频通道只传 PCM 帧。
+两条通道都使用 4 字节大端长度前缀分帧；音频通道通过 `audioChannelHello` 完成标识。
 
 ## 控制消息
 
-`hello / welcome / clockPing / clockPong / prepareSession / startPlayback / stopPlayback / heartbeat / goodbye`
+`hello / welcome / audioChannelHello / clockPing / clockPong / prepareSession / startPlayback / stopPlayback / stopAcknowledged / heartbeat / goodbye`
 
 音频帧：`[type=8][headerLen][header JSON][pcm Float32 LE]`
 
@@ -29,3 +30,5 @@ Host:    收到 NWConnection 后建立 SyncConnection
 `offset ≈ speakerMid - hostMid`
 
 Speaker 调度：`localPlayAt = hostPlayAt + offset`
+
+Speaker 会先累积约 800 ms 的连续音频块再开始调度；Host 以 1.2–1.5 秒自适应前置时间发送，以吸收 Wi‑Fi 抖动。

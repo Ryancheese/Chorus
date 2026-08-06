@@ -224,9 +224,19 @@ struct HostRootView: View {
                     .buttonStyle(GlassPrimaryButtonStyle(enabled: canPlay))
                     .disabled(!canPlay)
 
+                    Button(session.isPaused ? "继续" : "暂停") {
+                        if session.isPaused {
+                            session.resume()
+                        } else {
+                            session.pause()
+                        }
+                    }
+                    .buttonStyle(GlassSecondaryButtonStyle())
+                    .disabled(session.phase != .playing && !session.isPaused)
+
                     Button("停止") { session.stop() }
                         .buttonStyle(GlassSecondaryButtonStyle())
-                        .disabled(session.phase != .playing)
+                        .disabled(session.phase != .playing && !session.isPaused)
                 }
             }
         }

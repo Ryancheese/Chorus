@@ -10,8 +10,8 @@ public enum SyncBonjour {
 /// Wire protocol version. Bump when message layout changes.
 public enum SyncProtocol {
     public static let version: UInt16 = 1
-    /// Playback buffer ahead of host time (seconds).
-    public static let defaultLeadTime: TimeInterval = 0.25
+    /// Playback buffer ahead of host time (seconds). A longer lead absorbs Wi‑Fi jitter.
+    public static let defaultLeadTime: TimeInterval = 1.2
     /// PCM format: mono Float32 @ 44.1 kHz for demo simplicity.
     public static let sampleRate: Double = 44_100
     public static let channels: UInt16 = 1
@@ -29,6 +29,8 @@ public enum MessageType: UInt8, Codable, Sendable {
     case audioChunk = 8
     case heartbeat = 9
     case goodbye = 10
+    case audioChannelHello = 11
+    case stopAcknowledged = 12
 }
 
 public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
@@ -131,6 +133,8 @@ public enum ControlPayload: Codable, Sendable {
     case prepareSession(PrepareSession)
     case startPlayback(StartPlayback)
     case stopPlayback(sessionID: UUID)
+    case audioChannelHello(deviceID: String)
+    case stopAcknowledged(sessionID: UUID)
     case heartbeat(deviceID: String)
     case goodbye(deviceID: String)
 
@@ -161,6 +165,12 @@ public enum ControlPayload: Codable, Sendable {
             try container.encode(start, forKey: .payload)
         case .stopPlayback(let sessionID):
             try container.encode(MessageType.stopPlayback, forKey: .type)
+            try container.encode(["sessionID": sessionID.uuidString], forKey: .payload)
+        case .audioChannelHello(let deviceID):
+            try container.encode(MessageType.audioChannelHello, forKey: .type)
+            try container.encode(["deviceID": deviceID], forKey: .payload)
+        case .stopAcknowledged(let sessionID):
+            try container.encode(MessageType.stopAcknowledged, forKey: .type)
             try container.encode(["sessionID": sessionID.uuidString], forKey: .payload)
         case .heartbeat(let deviceID):
             try container.encode(MessageType.heartbeat, forKey: .type)
@@ -193,6 +203,15 @@ public enum ControlPayload: Codable, Sendable {
                 throw DecodingError.dataCorruptedError(forKey: .payload, in: container, debugDescription: "Missing sessionID")
             }
             self = .stopPlayback(sessionID: id)
+        case .audioChannelHello:
+            let dict = try container.decode([String: String].self, forKey: .payload)
+            self = .audioChannelHello(deviceID: dict["deviceID"] ?? "")
+        case .stopAcknowledged:
+            let dict = try container.decode([String: String].self, forKey: .payload)
+            guard let raw = dict["sessionID"], let id = UUID(uuidString: raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .payload, in: container, debugDescription: "Missing sessionID")
+            }
+            self = .stopAcknowledged(sessionID: id)
         case .heartbeat:
             let dict = try container.decode([String: String].self, forKey: .payload)
             self = .heartbeat(deviceID: dict["deviceID"] ?? "")

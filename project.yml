@@ -31,6 +31,7 @@ targets:
         INFOPLIST_FILE: Apps/Host/Host/Info.plist
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: StereoSync Host
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: StereoSync 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。
         LD_RUNPATH_SEARCH_PATHS: ["@executable_path/../Frameworks"]
         CODE_SIGN_ENTITLEMENTS: Apps/Host/Host/Host.entitlements
     dependencies:
@@ -54,6 +55,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: StereoSync
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: StereoSync 需要局域网，才能被 Mac 发现并同步播放音频。
         TARGETED_DEVICE_FAMILY: "1,2"
         LD_RUNPATH_SEARCH_PATHS: ["@executable_path/Frameworks"]
         CODE_SIGN_ENTITLEMENTS: Apps/Speaker/Speaker/Speaker.entitlements

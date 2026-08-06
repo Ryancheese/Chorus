@@ -11,6 +11,7 @@ public final class SyncAudioPlayer: ObservableObject {
     private let player = AVAudioPlayerNode()
     private var format: AVAudioFormat
     private var started = false
+    private var hasScheduledAudio = false
 
     public init(sampleRate: Double = SyncProtocol.sampleRate) {
         format = AVAudioFormat(
@@ -35,6 +36,7 @@ public final class SyncAudioPlayer: ObservableObject {
         engine.connect(player, to: engine.mainMixerNode, format: format)
         try engine.start()
         started = true
+        hasScheduledAudio = false
     }
 
     /// Schedule PCM to start at an absolute local uptime (ProcessInfo.systemUptime).
@@ -48,14 +50,20 @@ public final class SyncAudioPlayer: ObservableObject {
             }
         }
 
-        let now = HostTime.now()
-        let delay = max(0, playAtLocalUptime - now)
-        let hostTime = machHostTime(afterSeconds: delay)
-
         if !player.isPlaying {
             player.play()
         }
-        player.scheduleBuffer(buffer, at: AVAudioTime(hostTime: hostTime), options: [])
+        if hasScheduledAudio {
+            // Appending to the existing render queue avoids tiny timing gaps at
+            // every network chunk boundary, which are audible as ticks/beeps.
+            player.scheduleBuffer(buffer, at: nil, options: [])
+        } else {
+            let now = HostTime.now()
+            let delay = max(0, playAtLocalUptime - now)
+            let hostTime = machHostTime(afterSeconds: delay)
+            player.scheduleBuffer(buffer, at: AVAudioTime(hostTime: hostTime), options: [])
+            hasScheduledAudio = true
+        }
         isPlaying = true
     }
 
@@ -71,8 +79,10 @@ public final class SyncAudioPlayer: ObservableObject {
         player.stop()
         if started {
             engine.stop()
+            engine.reset()
             started = false
         }
+        hasScheduledAudio = false
         isPlaying = false
     }
 

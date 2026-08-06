@@ -30,10 +30,15 @@ public final class SpeakerSessionController: ObservableObject {
     public let localDevice: DeviceInfo
     private let advertiser: PeerAdvertiser
     private var connection: SyncConnection?
+    private var audioConnection: SyncConnection?
     /// Approximate `localTime - hostTime` from the latest ping.
     private var offset: TimeInterval = 0
+    /// Frozen for a playing session so adjacent chunks share one timing basis.
+    private var playbackOffset: TimeInterval?
     private let player = SyncAudioPlayer()
     private var sessionID: UUID?
+    private var jitterBuffer: AudioJitterBuffer?
+    private var lastStoppedSessionID: UUID?
 
     public init(deviceName: String? = nil) {
         let resolvedName = deviceName ?? Self.defaultSpeakerName()
@@ -44,32 +49,47 @@ public final class SpeakerSessionController: ObservableObject {
                 self?.accept(nw)
             }
         }
+        advertiser.onStatusChange = { [weak self] in
+            self?.syncFromAdvertiser()
+        }
     }
 
     public func startAdvertising() {
+        lastError = nil
         advertiser.start()
         isAdvertising = true
         phase = .advertising
         refreshConnectionAddress()
         statusText = "等待 Mac 连接…"
-        if let err = advertiser.lastError {
-            lastError = err
+        syncFromAdvertiser()
+    }
+
+    private func syncFromAdvertiser() {
+        refreshConnectionAddress()
+        isAdvertising = advertiser.isAdvertising
+        lastError = advertiser.lastError
+        if advertiser.isAdvertising, phase == .idle || phase == .error {
+            phase = .advertising
+            statusText = advertiser.bonjourUnavailable
+                ? "等待 Mac 手动连接…"
+                : "等待 Mac 连接…"
+        }
+        if !advertiser.isAdvertising, let err = advertiser.lastError, phase == .advertising {
             phase = .error
             statusText = err
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            self.refreshConnectionAddress()
-            if let err = self.advertiser.lastError {
-                self.lastError = err
-            }
         }
     }
 
     public func stopAll() {
         player.stop()
         connection?.cancel()
+        audioConnection?.cancel()
         connection = nil
+        audioConnection = nil
+        jitterBuffer = nil
+        sessionID = nil
+        lastStoppedSessionID = nil
+        playbackOffset = nil
         advertiser.stop()
         isAdvertising = false
         connectionAddress = nil
@@ -86,40 +106,61 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     private func accept(_ nw: NWConnection) {
-        connection?.cancel()
         let sync = SyncConnection(connection: nw, remoteLabel: "host")
-        connection = sync
         phase = .connecting
         statusText = "主机连入，握手中…"
         sync.start { [weak self] event in
             Task { @MainActor in
-                self?.handle(event)
+                self?.handle(event, from: sync)
             }
         }
     }
 
-    private func handle(_ event: SyncConnectionEvent) {
+    private func handle(_ event: SyncConnectionEvent, from sync: SyncConnection) {
         switch event {
         case .connected:
-            connection?.sendControl(.hello(localDevice))
-            phase = .connected
+            break
         case .disconnected(let reason):
-            player.stop()
-            phase = .advertising
-            statusText = reason.map { "断开：\($0)" } ?? "主机断开，继续等待…"
-            hostName = nil
+            if sync === connection {
+                player.stop()
+                jitterBuffer = nil
+                sessionID = nil
+                playbackOffset = nil
+                connection = nil
+                phase = .advertising
+                statusText = reason.map { "断开：\($0)" } ?? "主机断开，继续等待…"
+                hostName = nil
+            } else if sync === audioConnection {
+                audioConnection = nil
+                if phase == .playing {
+                    player.stop()
+                    playbackOffset = nil
+                    phase = .ready
+                    statusText = "音频通道断开"
+                }
+            }
         case .control(let payload):
-            handleControl(payload)
+            handleControl(payload, from: sync)
         case .audio(let header, let pcm):
+            guard sync === audioConnection else { return }
             handleAudio(header: header, pcm: pcm)
         }
     }
 
-    private func handleControl(_ payload: ControlPayload) {
+    private func handleControl(_ payload: ControlPayload, from sync: SyncConnection) {
         switch payload {
-        case .hello(let info), .welcome(let info):
+        case .audioChannelHello:
+            audioConnection?.cancel()
+            audioConnection = sync
+        case .hello(let info):
+            connection?.cancel()
+            connection = sync
             hostName = info.name
             connection?.sendControl(.welcome(localDevice))
+            phase = .syncing
+            statusText = "已连接 \(info.name)"
+        case .welcome(let info):
+            hostName = info.name
             phase = .syncing
             statusText = "已连接 \(info.name)"
         case .clockPing(let ping):
@@ -137,24 +178,40 @@ public final class SpeakerSessionController: ObservableObject {
                 phase = .ready
             }
         case .prepareSession(let session):
+            guard sync === connection else { return }
             sessionID = session.sessionID
+            lastStoppedSessionID = nil
             sessionTitle = session.title
             do {
                 try player.prepareSession(sampleRate: session.sampleRate)
+                jitterBuffer = AudioJitterBuffer(sampleRate: session.sampleRate)
                 statusText = "准备播放：\(session.title)"
             } catch {
                 lastError = error.localizedDescription
                 phase = .error
             }
         case .startPlayback(let start):
+            guard sync === connection, start.sessionID == sessionID else { return }
             sessionID = start.sessionID
+            playbackOffset = offset
             statusText = "即将同步起播…"
             phase = .playing
-        case .stopPlayback:
+        case .stopPlayback(let id):
+            guard sync === connection else { return }
+            if id == lastStoppedSessionID {
+                connection?.sendControl(.stopAcknowledged(sessionID: id))
+                return
+            }
+            guard id == sessionID else { return }
+            sessionID = nil
+            lastStoppedSessionID = id
+            jitterBuffer = nil
+            playbackOffset = nil
             player.stop()
             phase = .ready
             statusText = "主机已停止"
             sessionTitle = nil
+            connection?.sendControl(.stopAcknowledged(sessionID: id))
         case .goodbye:
             stopAll()
             startAdvertising()
@@ -164,11 +221,17 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     private func handleAudio(header: AudioChunkHeader, pcm: Data) {
-        guard sessionID == nil || header.sessionID == sessionID else { return }
-        let localPlayAt = header.hostPlayAt + offset
-        player.scheduleChunk(pcmData: pcm, playAtLocalUptime: localPlayAt)
-        phase = .playing
-        statusText = sessionTitle.map { "播放中：\($0)" } ?? "播放中"
+        guard header.sessionID == sessionID, let jitterBuffer else { return }
+        for chunk in jitterBuffer.append(header: header, pcm: pcm) {
+            let localPlayAt = chunk.header.hostPlayAt + (playbackOffset ?? offset)
+            // Playing a late chunk immediately causes an audible catch-up stutter.
+            guard localPlayAt > HostTime.now() + 0.02 else { continue }
+            player.scheduleChunk(pcmData: chunk.pcm, playAtLocalUptime: localPlayAt)
+        }
+        if player.isPlaying {
+            phase = .playing
+            statusText = sessionTitle.map { "播放中：\($0)" } ?? "播放中"
+        }
     }
 
     public static func defaultSpeakerName() -> String {
