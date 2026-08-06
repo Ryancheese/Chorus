@@ -4,7 +4,7 @@ import Foundation
 public enum SyncBonjour {
     public static let type = "_stereosync._tcp"
     public static let domain = "local."
-    public static let controlPort: UInt16 = 74_821
+    public static let controlPort: UInt16 = 17_482
 }
 
 /// Wire protocol version. Bump when message layout changes.
