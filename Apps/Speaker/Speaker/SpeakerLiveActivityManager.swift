@@ -6,7 +6,7 @@ import StereoSyncCore
 final class SpeakerLiveActivityManager {
     private var activity: Activity<SpeakerActivityAttributes>?
 
-    func update(phase: SpeakerSessionController.Phase) {
+    func update(phase: SpeakerSessionController.Phase, sessionTitle: String?) {
         guard let status = SpeakerActivityStatus.from(phase: phase) else {
             end()
             return
@@ -14,7 +14,10 @@ final class SpeakerLiveActivityManager {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let content = ActivityContent(
-            state: SpeakerActivityAttributes.ContentState(status: status),
+            state: SpeakerActivityAttributes.ContentState(
+                status: status,
+                contentTitle: status == .playing ? sessionTitle : nil
+            ),
             staleDate: nil
         )
         if let activity {

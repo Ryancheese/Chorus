@@ -52,10 +52,13 @@ struct SpeakerRootView: View {
             withAnimation(.spring(response: 0.75, dampingFraction: 0.84)) {
                 appeared = true
             }
-            liveActivityManager.update(phase: session.phase)
+            liveActivityManager.update(phase: session.phase, sessionTitle: session.sessionTitle)
         }
         .onChange(of: session.phase) { _, phase in
-            liveActivityManager.update(phase: phase)
+            liveActivityManager.update(phase: phase, sessionTitle: session.sessionTitle)
+        }
+        .onChange(of: session.sessionTitle) { _, title in
+            liveActivityManager.update(phase: session.phase, sessionTitle: title)
         }
         .sheet(isPresented: $isHelpPresented) {
             StereoSyncHelpView(role: .speaker)

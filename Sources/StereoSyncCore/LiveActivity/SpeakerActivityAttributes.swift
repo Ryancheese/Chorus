@@ -34,9 +34,11 @@ import ActivityKit
 public struct SpeakerActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         public var status: SpeakerActivityStatus
+        public var contentTitle: String?
 
-        public init(status: SpeakerActivityStatus) {
+        public init(status: SpeakerActivityStatus, contentTitle: String?) {
             self.status = status
+            self.contentTitle = contentTitle
         }
     }
 
