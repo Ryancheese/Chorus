@@ -1,5 +1,5 @@
 import XCTest
-@testable import StereoSyncCore
+@testable import ChorusCore
 
 final class ProtocolTests: XCTestCase {
     func testControlRoundTrip() throws {
@@ -111,6 +111,25 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(L10n.text("action.help"), "ヘルプ")
         settings.selection = .chinese
         XCTAssertEqual(L10n.text("action.help"), "使用帮助")
+    }
+
+    @MainActor
+    func testAppearanceSelectionMapsColorSchemeAndPersists() {
+        let settings = AppearanceSettings()
+        let original = settings.selection
+        defer { settings.selection = original }
+
+        settings.selection = .light
+        XCTAssertEqual(settings.selection.preferredColorScheme, .light)
+        settings.selection = .dark
+        XCTAssertEqual(settings.selection.preferredColorScheme, .dark)
+        settings.selection = .system
+        XCTAssertNil(settings.selection.preferredColorScheme)
+
+        let restored = AppearanceSettings()
+        XCTAssertEqual(restored.selection, .system)
+        settings.selection = .dark
+        XCTAssertEqual(AppearanceSettings().selection, .dark)
     }
 
     func testSpeakerLiveActivityStatusMapping() {

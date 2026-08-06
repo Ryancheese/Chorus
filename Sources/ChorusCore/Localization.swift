@@ -1,11 +1,11 @@
 import Foundation
 import Combine
 
-/// Centralizes all user-facing copy in StereoSyncCore's localized resource bundle.
+/// Centralizes all user-facing copy in ChorusCore's localized resource bundle.
 public enum L10n {
     public static let supportedLanguageCodes = ["en", "zh-Hans", "ja", "ko"]
     public static let defaultLanguageCode = "zh-Hans"
-    static let languagePreferenceKey = "stereosync.language"
+    static let languagePreferenceKey = "chorus.language"
 
     public static func text(_ key: String) -> String {
         text(key, languageCode: preferredLanguageCode)

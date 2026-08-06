@@ -54,7 +54,7 @@ public final class PeerBrowser: ObservableObject {
     @Published public private(set) var lastError: String?
 
     private var browser: NWBrowser?
-    private let queue = DispatchQueue(label: "stereosync.browser")
+    private let queue = DispatchQueue(label: "chorus.browser")
 
     public init() {}
 
@@ -136,7 +136,7 @@ public final class PeerAdvertiser: ObservableObject {
     @Published public private(set) var bonjourUnavailable = false
 
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "stereosync.advertiser")
+    private let queue = DispatchQueue(label: "chorus.advertiser")
     private let deviceName: String
     private var advertiseBonjour = true
     public var onConnection: ((NWConnection) -> Void)?

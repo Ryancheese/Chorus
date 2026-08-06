@@ -2,7 +2,7 @@ import Foundation
 
 /// Bonjour service type used for LAN discovery.
 public enum SyncBonjour {
-    public static let type = "_stereosync._tcp"
+    public static let type = "_chorus._tcp"
     public static let domain = "local."
     public static let controlPort: UInt16 = 17_482
 }

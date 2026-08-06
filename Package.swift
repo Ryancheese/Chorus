@@ -2,25 +2,25 @@
 import PackageDescription
 
 let package = Package(
-    name: "StereoSync",
+    name: "Chorus",
     defaultLocalization: "zh-Hans",
     platforms: [
         .macOS(.v14),
         .iOS(.v17)
     ],
     products: [
-        .library(name: "StereoSyncCore", targets: ["StereoSyncCore"])
+        .library(name: "ChorusCore", targets: ["ChorusCore"])
     ],
     targets: [
         .target(
-            name: "StereoSyncCore",
-            path: "Sources/StereoSyncCore",
+            name: "ChorusCore",
+            path: "Sources/ChorusCore",
             resources: [.process("Resources")]
         ),
         .testTarget(
-            name: "StereoSyncCoreTests",
-            dependencies: ["StereoSyncCore"],
-            path: "Tests/StereoSyncCoreTests"
+            name: "ChorusCoreTests",
+            dependencies: ["ChorusCore"],
+            path: "Tests/ChorusCoreTests"
         )
     ]
 )

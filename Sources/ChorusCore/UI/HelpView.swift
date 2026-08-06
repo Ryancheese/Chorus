@@ -5,7 +5,7 @@ public enum HelpRole {
     case speaker
 }
 
-public struct StereoSyncHelpView: View {
+public struct ChorusHelpView: View {
     private let role: HelpRole
     @Environment(\.dismiss) private var dismiss
 

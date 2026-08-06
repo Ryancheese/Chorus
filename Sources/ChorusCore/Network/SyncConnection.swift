@@ -13,7 +13,7 @@ public final class SyncConnection: @unchecked Sendable {
     public let connection: NWConnection
     public let remoteLabel: String
 
-    private let queue = DispatchQueue(label: "stereosync.connection")
+    private let queue = DispatchQueue(label: "chorus.connection")
     private let unpacker = FrameIO.Unpacker()
     private var onEvent: ((SyncConnectionEvent) -> Void)?
     private let lock = NSLock()

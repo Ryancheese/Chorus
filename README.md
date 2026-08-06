@@ -1,10 +1,10 @@
-# StereoSync
+# Chorus
 
 Mac 播音频，同一 Wi‑Fi 下 iPhone / iPad 近同步同播的 Demo。
 
 ## 功能（Phase 1）
 
-- Bonjour 局域网发现（`_stereosync._tcp`）
+- Bonjour 局域网发现（`_chorus._tcp`）
 - TCP 信令 + 分帧音频传输
 - NTP 风格时钟校准
 - 按统一时间线调度 PCM 播放
@@ -22,11 +22,11 @@ Mac 播音频，同一 Wi‑Fi 下 iPhone / iPad 近同步同播的 Demo。
 ## 快速开始
 
 ```bash
-git clone <your-repo-url> StereoSync
-cd StereoSync
+git clone <your-repo-url> Chorus
+cd Chorus
 chmod +x scripts/generate-xcode.sh
 ./scripts/generate-xcode.sh
-open StereoSync.xcodeproj
+open Chorus.xcodeproj
 ```
 
 1. 选 **Speaker** scheme → 真机运行，点「开始广播」
@@ -43,19 +43,19 @@ open StereoSync.xcodeproj
 2. 不要创建 Multi-Output Device；它会让 Mac 原声立即输出，破坏同步
 3. Host 已连接扬声器后，点「统一转播系统声音」
 
-首次使用需允许 StereoSync Host 访问音频输入。开始转播时，StereoSync 会自动把 macOS 的输入和输出切到 BlackHole；停止时会恢复原先的设备。
+首次使用需允许 Chorus Host 访问音频输入。开始转播时，Chorus 会自动把 macOS 的输入和输出切到 BlackHole；停止时会恢复原先的设备。
 
-受 DRM 保护的流媒体内容可能被 macOS 静音或限制采集；StereoSync 不尝试绕过该限制。
+受 DRM 保护的流媒体内容可能被 macOS 静音或限制采集；Chorus 不尝试绕过该限制。
 
 ## 仓库结构
 
 ```
-StereoSync/
-├── Package.swift                 # 共享库 StereoSyncCore
-├── Sources/StereoSyncCore/       # 协议 / 发现 / 时钟 / 音频 / 会话
+Chorus/
+├── Package.swift                 # 共享库 ChorusCore
+├── Sources/ChorusCore/       # 协议 / 发现 / 时钟 / 音频 / 会话
 ├── Apps/Host/                    # macOS 主机 App
 ├── Apps/Speaker/                 # iOS 扬声器 App
-├── Tests/StereoSyncCoreTests/
+├── Tests/ChorusCoreTests/
 ├── project.yml                   # XcodeGen 工程描述
 └── scripts/generate-xcode.sh
 ```

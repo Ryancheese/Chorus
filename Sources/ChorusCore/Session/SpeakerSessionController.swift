@@ -1,6 +1,9 @@
 import Foundation
 import Network
 
+#if canImport(AVFoundation)
+import AVFoundation
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -31,6 +34,22 @@ public final class SpeakerSessionController: ObservableObject {
         }
     }
 
+    public enum AudioDisruption: Equatable {
+        case screenMirrored
+        case audioInterrupted
+        case audioUnavailable
+        case audioRouteChanged
+
+        public var message: String {
+            switch self {
+            case .screenMirrored: L10n.text("error.screen.mirrored")
+            case .audioInterrupted: L10n.text("error.audio.interrupted")
+            case .audioUnavailable: L10n.text("error.audio.unavailable")
+            case .audioRouteChanged: L10n.text("error.audio.route")
+            }
+        }
+    }
+
     @Published public private(set) var phase: Phase = .idle
     @Published public private(set) var hostName: String?
     @Published public private(set) var statusText = "点击开始广播"
@@ -39,6 +58,8 @@ public final class SpeakerSessionController: ObservableObject {
     @Published public private(set) var clockOffsetMs: Double?
     @Published public private(set) var isAdvertising = false
     @Published public private(set) var connectionAddress: String?
+    /// Non-nil when sync was aborted due to mirroring / speaker occupation; UI should alert.
+    @Published public private(set) var audioDisruptionMessage: String?
 
     public let localDevice: DeviceInfo
     private let advertiser: PeerAdvertiser
@@ -52,6 +73,8 @@ public final class SpeakerSessionController: ObservableObject {
     private var sessionID: UUID?
     private var jitterBuffer: AudioJitterBuffer?
     private var lastStoppedSessionID: UUID?
+    private var audioGuardTokens: [NSObjectProtocol] = []
+    private var isAbortingForAudio = false
 
     public init(deviceName: String? = nil) {
         let resolvedName = deviceName ?? Self.defaultSpeakerName()
@@ -67,14 +90,29 @@ public final class SpeakerSessionController: ObservableObject {
         }
     }
 
+    deinit {
+        for token in audioGuardTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
     public func startAdvertising() {
         lastError = nil
+        audioDisruptionMessage = nil
         advertiser.start()
         isAdvertising = true
         phase = .advertising
         refreshConnectionAddress()
         statusText = "等待 Mac 连接…"
+        installAudioGuards()
         syncFromAdvertiser()
+        #if os(iOS)
+        refreshAudioEnvironmentHint()
+        #endif
+    }
+
+    public func clearAudioDisruptionMessage() {
+        audioDisruptionMessage = nil
     }
 
     private func syncFromAdvertiser() {
@@ -94,6 +132,7 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     public func stopAll() {
+        removeAudioGuards()
         player.stop()
         connection?.cancel()
         audioConnection?.cancel()
@@ -119,6 +158,13 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     private func accept(_ nw: NWConnection) {
+        #if os(iOS)
+        if let disruption = currentAudioBlocker() {
+            nw.cancel()
+            abortSync(for: disruption)
+            return
+        }
+        #endif
         let sync = SyncConnection(connection: nw, remoteLabel: "host")
         phase = .connecting
         statusText = "主机连入，握手中…"
@@ -166,6 +212,14 @@ public final class SpeakerSessionController: ObservableObject {
             audioConnection?.cancel()
             audioConnection = sync
         case .hello(let info):
+            #if os(iOS)
+            if let disruption = currentAudioBlocker() {
+                sync.sendControl(.goodbye(deviceID: localDevice.id))
+                sync.cancel()
+                abortSync(for: disruption)
+                return
+            }
+            #endif
             connection?.cancel()
             connection = sync
             hostName = info.name
@@ -173,6 +227,12 @@ public final class SpeakerSessionController: ObservableObject {
             phase = .syncing
             statusText = "已连接 \(info.name)"
         case .welcome(let info):
+            #if os(iOS)
+            if let disruption = currentAudioBlocker() {
+                abortSync(for: disruption)
+                return
+            }
+            #endif
             hostName = info.name
             phase = .syncing
             statusText = "已连接 \(info.name)"
@@ -193,19 +253,40 @@ public final class SpeakerSessionController: ObservableObject {
             clockOffsetMs = seconds * 1000
         case .prepareSession(let session):
             guard sync === connection else { return }
+            #if os(iOS)
+            if let disruption = currentAudioBlocker() {
+                abortSync(for: disruption)
+                return
+            }
+            #endif
             sessionID = session.sessionID
             lastStoppedSessionID = nil
             sessionTitle = session.title
-            do {
-                try player.prepareSession(sampleRate: session.sampleRate)
-                jitterBuffer = AudioJitterBuffer(sampleRate: session.sampleRate)
-                statusText = "准备播放：\(session.title)"
-            } catch {
-                lastError = error.localizedDescription
-                phase = .error
+            Task { @MainActor in
+                do {
+                    try await player.prepareSession(sampleRate: session.sampleRate)
+                    guard self.sessionID == session.sessionID else { return }
+                    #if os(iOS)
+                    // Activation can briefly change the reported route; re-check after.
+                    if let disruption = self.currentAudioBlocker() {
+                        self.abortSync(for: disruption)
+                        return
+                    }
+                    #endif
+                    jitterBuffer = AudioJitterBuffer(sampleRate: session.sampleRate)
+                    statusText = "准备播放：\(session.title)"
+                } catch {
+                    abortSync(for: .audioUnavailable)
+                }
             }
         case .startPlayback(let start):
             guard sync === connection, start.sessionID == sessionID else { return }
+            #if os(iOS)
+            if let disruption = currentAudioBlocker() {
+                abortSync(for: disruption)
+                return
+            }
+            #endif
             sessionID = start.sessionID
             playbackOffset = offset
             statusText = "即将同步起播…"
@@ -262,6 +343,180 @@ public final class SpeakerSessionController: ObservableObject {
             statusText = sessionTitle.map { "播放中：\($0)" } ?? "播放中"
         }
     }
+
+    /// Tear down the host sync session, keep advertising, and surface a user-facing alert.
+    private func abortSync(for disruption: AudioDisruption) {
+        guard !isAbortingForAudio else { return }
+        isAbortingForAudio = true
+        defer { isAbortingForAudio = false }
+
+        let message = disruption.message
+        if let connection {
+            connection.sendControl(.goodbye(deviceID: localDevice.id))
+        }
+        player.stop()
+        connection?.cancel()
+        audioConnection?.cancel()
+        connection = nil
+        audioConnection = nil
+        jitterBuffer = nil
+        sessionID = nil
+        lastStoppedSessionID = nil
+        playbackOffset = nil
+        hostName = nil
+        sessionTitle = nil
+        clockOffsetMs = nil
+
+        lastError = message
+        audioDisruptionMessage = message
+        phase = advertiser.isAdvertising ? .advertising : .error
+        isAdvertising = advertiser.isAdvertising
+        statusText = message
+        refreshConnectionAddress()
+    }
+
+    #if os(iOS)
+    private var isInSyncSession: Bool {
+        switch phase {
+        case .connecting, .connected, .syncing, .ready, .playing:
+            return true
+        case .idle, .advertising, .error:
+            return connection != nil || audioConnection != nil
+        }
+    }
+
+    private var isScreenCaptured: Bool {
+        UIScreen.main.isCaptured
+    }
+
+    /// Non-nil when the current environment cannot keep reliable phone-speaker sync.
+    private func currentAudioBlocker() -> AudioDisruption? {
+        if isScreenCaptured { return .screenMirrored }
+        if hasExternalAudioOutput { return .audioRouteChanged }
+        return nil
+    }
+
+    private var hasExternalAudioOutput: Bool {
+        AVAudioSession.sharedInstance().currentRoute.outputs.contains { isExternalOutput($0.portType) }
+    }
+
+    private func isExternalOutput(_ port: AVAudioSession.Port) -> Bool {
+        switch port {
+        case .builtInSpeaker, .builtInReceiver:
+            return false
+        default:
+            // Headphones, Bluetooth, AirPlay, CarPlay, USB, HDMI, etc.
+            return true
+        }
+    }
+
+    private func installAudioGuards() {
+        removeAudioGuards()
+        let center = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+
+        audioGuardTokens.append(
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] notification in
+                Task { @MainActor in
+                    self?.handleAudioInterruption(notification)
+                }
+            }
+        )
+
+        audioGuardTokens.append(
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] notification in
+                Task { @MainActor in
+                    self?.handleRouteChange(notification)
+                }
+            }
+        )
+
+        audioGuardTokens.append(
+            center.addObserver(
+                forName: UIScreen.capturedDidChangeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.handleScreenCaptureChange()
+                }
+            }
+        )
+    }
+
+    private func removeAudioGuards() {
+        for token in audioGuardTokens {
+            NotificationCenter.default.removeObserver(token)
+        }
+        audioGuardTokens.removeAll()
+    }
+
+    private func handleAudioInterruption(_ notification: Notification) {
+        guard isInSyncSession else { return }
+        guard
+            let info = notification.userInfo,
+            let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeValue),
+            type == .began
+        else { return }
+        abortSync(for: .audioInterrupted)
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        guard
+            let info = notification.userInfo,
+            let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
+        else { return }
+
+        switch reason {
+        case .newDeviceAvailable, .oldDeviceUnavailable, .override:
+            break
+        default:
+            // Ignore categoryChange from our own setActive/setCategory.
+            refreshAudioEnvironmentHint()
+            return
+        }
+
+        if isInSyncSession {
+            abortSync(for: .audioRouteChanged)
+        } else {
+            refreshAudioEnvironmentHint()
+        }
+    }
+
+    private func handleScreenCaptureChange() {
+        if let disruption = currentAudioBlocker(), isInSyncSession {
+            abortSync(for: disruption)
+        } else {
+            refreshAudioEnvironmentHint()
+        }
+    }
+
+    private func refreshAudioEnvironmentHint() {
+        guard phase == .advertising, connection == nil else { return }
+        if isScreenCaptured {
+            statusText = L10n.text("hint.screen.mirrored")
+        } else if hasExternalAudioOutput {
+            statusText = L10n.text("hint.audio.route.external")
+        } else if advertiser.isAdvertising {
+            statusText = advertiser.bonjourUnavailable
+                ? "等待 Mac 手动连接…"
+                : "等待 Mac 连接…"
+        }
+    }
+    #else
+    private func installAudioGuards() {}
+    private func removeAudioGuards() {}
+    #endif
 
     public static func defaultSpeakerName() -> String {
         #if os(iOS)

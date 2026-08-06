@@ -224,22 +224,25 @@ public final class HostSessionController: ObservableObject {
         if alsoPlayLocally {
             let player = SyncAudioPlayer(sampleRate: track.sampleRate)
             localPlayer = player
-            do {
-                #if os(macOS)
-                guard let output = AudioDeviceList.builtInOutput() else {
-                    throw NSError(
-                        domain: "StereoSync.AudioOutput",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: L10n.text("error.output.missing")]
-                    )
+            Task { @MainActor in
+                do {
+                    #if os(macOS)
+                    guard let output = AudioDeviceList.builtInOutput() else {
+                        throw NSError(
+                            domain: "Chorus.AudioOutput",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: L10n.text("error.output.missing")]
+                        )
+                    }
+                    try AudioDeviceList.setDefaultOutput(output.id)
+                    try player.setOutputDevice(output.id)
+                    #endif
+                    try await player.prepareSession(sampleRate: track.sampleRate)
+                    guard self.currentSessionID == sessionID else { return }
+                    player.schedule(pcm: track.pcmFloat32Mono, playAtLocalUptime: hostPlayAt)
+                } catch {
+                    self.lastError = error.localizedDescription
                 }
-                try AudioDeviceList.setDefaultOutput(output.id)
-                try player.setOutputDevice(output.id)
-                #endif
-                try player.prepareSession(sampleRate: track.sampleRate)
-                player.schedule(pcm: track.pcmFloat32Mono, playAtLocalUptime: hostPlayAt)
-            } catch {
-                lastError = error.localizedDescription
             }
         }
 
@@ -336,7 +339,7 @@ public final class HostSessionController: ObservableObject {
             }
             guard let capture else {
                 throw lastStartError ?? NSError(
-                    domain: "StereoSync.BlackHole",
+                    domain: "Chorus.BlackHole",
                     code: -1,
                     userInfo: [NSLocalizedDescriptionKey: "无法启动 BlackHole 音频采集"]
                 )
@@ -383,12 +386,16 @@ public final class HostSessionController: ObservableObject {
         #if os(macOS)
         if let outputDeviceID = liveOutputDeviceID {
             let player = SyncAudioPlayer(sampleRate: sampleRate)
-            do {
-                try player.setOutputDevice(outputDeviceID)
-                try player.prepareSession(sampleRate: sampleRate)
-                localPlayer = player
-            } catch {
-                lastError = "无法启动 Mac 本地回放：\(error.localizedDescription)"
+            localPlayer = player
+            Task { @MainActor in
+                do {
+                    try player.setOutputDevice(outputDeviceID)
+                    try await player.prepareSession(sampleRate: sampleRate)
+                    guard self.currentSessionID == sessionID else { return }
+                } catch {
+                    self.lastError = "无法启动 Mac 本地回放：\(error.localizedDescription)"
+                    self.localPlayer = nil
+                }
             }
         }
         #endif
@@ -621,7 +628,18 @@ public final class HostSessionController: ObservableObject {
                 statusText = "就绪（RTT ≈ \(Int(rtt * 1000)) ms）"
             }
         case .goodbye(let id):
+            if let connection = speakerConnections[id] {
+                let audioLabel = "\(connection.remoteLabel)-audio"
+                audioConnections.filter { $0.remoteLabel == audioLabel }.forEach { $0.cancel() }
+                audioConnections.removeAll { $0.remoteLabel == audioLabel }
+                connection.cancel()
+                remove(connection, reason: "扬声器已退出同步")
+                speakerConnections[id] = nil
+            }
             connectedSpeakers.removeAll { $0.id == id }
+            if connections.isEmpty, phase == .playing || isStreamingSystemAudio {
+                stop()
+            }
         case .stopAcknowledged(let id):
             guard pendingStopSessionIDs.remove(id) != nil else { return }
             let wasPaused = pausedStopSessionIDs.remove(id) != nil

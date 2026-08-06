@@ -1,5 +1,5 @@
 import SwiftUI
-import StereoSyncCore
+import ChorusCore
 
 @main
 struct SpeakerApp: App {
@@ -13,6 +13,7 @@ struct SpeakerApp: App {
 struct SpeakerRootView: View {
     @StateObject private var session = SpeakerSessionController()
     @StateObject private var languageSettings = LanguageSettings()
+    @StateObject private var appearanceSettings = AppearanceSettings()
     @State private var appeared = false
     @State private var isHelpPresented = false
     @State private var liveActivityManager = SpeakerLiveActivityManager()
@@ -61,8 +62,22 @@ struct SpeakerRootView: View {
             liveActivityManager.update(phase: session.phase, sessionTitle: title)
         }
         .sheet(isPresented: $isHelpPresented) {
-            StereoSyncHelpView(role: .speaker)
+            ChorusHelpView(role: .speaker)
         }
+        .alert(
+            L10n.text("alert.sync.exited.title"),
+            isPresented: Binding(
+                get: { session.audioDisruptionMessage != nil },
+                set: { if !$0 { session.clearAudioDisruptionMessage() } }
+            )
+        ) {
+            Button(L10n.text("action.close"), role: .cancel) {
+                session.clearAudioDisruptionMessage()
+            }
+        } message: {
+            Text(session.audioDisruptionMessage ?? "")
+        }
+        .chorusAppearance(appearanceSettings)
     }
 
     private var brandBlock: some View {
@@ -73,7 +88,7 @@ struct SpeakerRootView: View {
             )
 
             VStack(spacing: 8) {
-                Text("StereoSync")
+                Text("Chorus")
                     .font(.system(size: 42, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
 
@@ -174,6 +189,7 @@ struct SpeakerRootView: View {
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 14) {
                 LanguageMenu(settings: languageSettings)
+                AppearanceMenu(settings: appearanceSettings)
                 Button {
                     isHelpPresented = true
                 } label: {

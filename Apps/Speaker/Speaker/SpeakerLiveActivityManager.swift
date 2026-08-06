@@ -1,6 +1,6 @@
 import ActivityKit
 import Foundation
-import StereoSyncCore
+import ChorusCore
 
 @MainActor
 final class SpeakerLiveActivityManager {

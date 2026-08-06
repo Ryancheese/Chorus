@@ -124,7 +124,7 @@ public enum AudioDeviceList {
         )
         guard status == noErr else {
             throw NSError(
-                domain: "StereoSync.AudioDevice",
+                domain: "Chorus.AudioDevice",
                 code: Int(status),
                 userInfo: [NSLocalizedDescriptionKey: "无法切换系统音频设备"]
             )

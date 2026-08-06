@@ -10,7 +10,7 @@
 ## 连接
 
 ```
-Speaker: NWListener + Bonjour _stereosync._tcp:17482
+Speaker: NWListener + Bonjour _chorus._tcp:17482
 Host:    收到 NWConnection 后建立 SyncConnection
 ```
 

@@ -1,2 +1,2 @@
-"NSLocalNetworkUsageDescription" = "StereoSync が近くの iPhone および iPad スピーカーを検出・接続するにはローカルネットワークへのアクセスが必要です。";
-"NSMicrophoneUsageDescription" = "StereoSync が共通の遅延でシステムオーディオを再生するために、BlackHole 仮想オーディオ入力を読み取る必要があります。";
+"NSLocalNetworkUsageDescription" = "Chorus が近くの iPhone および iPad スピーカーを検出・接続するにはローカルネットワークへのアクセスが必要です。";
+"NSMicrophoneUsageDescription" = "Chorus が共通の遅延でシステムオーディオを再生するために、BlackHole 仮想オーディオ入力を読み取る必要があります。";

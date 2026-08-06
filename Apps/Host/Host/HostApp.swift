@@ -1,5 +1,5 @@
 import SwiftUI
-import StereoSyncCore
+import ChorusCore
 import UniformTypeIdentifiers
 
 @main
@@ -18,6 +18,7 @@ struct HostRootView: View {
     @StateObject private var browser = PeerBrowser()
     @StateObject private var session = HostSessionController()
     @StateObject private var languageSettings = LanguageSettings()
+    @StateObject private var appearanceSettings = AppearanceSettings()
     @State private var selectedFileName: String?
     @State private var loadedTrack: DecodedTrack?
     @State private var playLocally = true
@@ -70,9 +71,10 @@ struct HostRootView: View {
             handleImport(result)
         }
         .sheet(isPresented: $isHelpPresented) {
-            StereoSyncHelpView(role: .host)
+            ChorusHelpView(role: .host)
                 .frame(minWidth: 520, minHeight: 460)
         }
+        .chorusAppearance(appearanceSettings)
     }
 
     private var header: some View {
@@ -80,7 +82,7 @@ struct HostRootView: View {
             PulsingOrb(isActive: isLive, symbol: session.phase == .playing ? "speaker.wave.3.fill" : "dot.radiowaves.left.and.right")
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("StereoSync")
+                Text("Chorus")
                     .font(.system(size: 40, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                 Text(L10n.text("host.tagline"))
@@ -96,6 +98,8 @@ struct HostRootView: View {
             }
             .buttonStyle(GlassSecondaryButtonStyle())
             LanguageMenu(settings: languageSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
+            AppearanceMenu(settings: appearanceSettings)
                 .buttonStyle(GlassSecondaryButtonStyle())
         }
     }

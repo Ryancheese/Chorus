@@ -48,6 +48,7 @@ public struct LiquidGlassBackground: View {
                 .offset(x: 20, y: 180 + 10 * sin(phase * 1.3))
         }
         .ignoresSafeArea()
+        .animation(.easeInOut(duration: 0.55), value: colorScheme)
         .onAppear {
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                 phase = .pi * 2

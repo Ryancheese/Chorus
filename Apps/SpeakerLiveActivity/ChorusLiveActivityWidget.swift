@@ -1,23 +1,23 @@
 import ActivityKit
-import StereoSyncCore
+import ChorusCore
 import SwiftUI
 import WidgetKit
 
 @main
-struct StereoSyncLiveActivityWidgetBundle: WidgetBundle {
+struct ChorusLiveActivityWidgetBundle: WidgetBundle {
     var body: some Widget {
-        StereoSyncLiveActivityWidget()
+        ChorusLiveActivityWidget()
     }
 }
 
-struct StereoSyncLiveActivityWidget: Widget {
+struct ChorusLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SpeakerActivityAttributes.self) { context in
             HStack(spacing: 12) {
                 Image(systemName: "hifispeaker.fill")
                     .foregroundStyle(.cyan)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("StereoSync")
+                    Text("Chorus")
                         .font(.headline)
                     Text(L10n.text(context.state.status.localizationKey))
                         .font(.subheadline)
@@ -30,7 +30,7 @@ struct StereoSyncLiveActivityWidget: Widget {
             .padding(.horizontal)
             .activityBackgroundTint(.black.opacity(0.8))
             .activitySystemActionForegroundColor(.white)
-            .widgetURL(URL(string: "stereosync://speaker"))
+            .widgetURL(URL(string: "chorus://speaker"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -54,7 +54,7 @@ struct StereoSyncLiveActivityWidget: Widget {
                         Image(systemName: symbol(for: context.state.status))
                             .foregroundStyle(.cyan)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(context.state.contentTitle ?? "StereoSync")
+                            Text(context.state.contentTitle ?? "Chorus")
                                 .font(.headline)
                                 .lineLimit(1)
                             Text(L10n.text(context.state.status.localizationKey))
@@ -72,7 +72,7 @@ struct StereoSyncLiveActivityWidget: Widget {
             } minimal: {
                 Image(systemName: "hifispeaker.fill")
             }
-            .widgetURL(URL(string: "stereosync://speaker"))
+            .widgetURL(URL(string: "chorus://speaker"))
             .keylineTint(.cyan)
         }
     }

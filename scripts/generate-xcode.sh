@@ -9,7 +9,7 @@ if ! command -v xcodegen >/dev/null 2>&1; then
 fi
 
 xcodegen generate
-echo "已生成 StereoSync.xcodeproj"
+echo "已生成 Chorus.xcodeproj"
 echo "用 Xcode 打开后："
 echo "  1) 选 Host scheme → My Mac 运行"
 echo "  2) 选 Speaker scheme → 真机 iPhone/iPad 运行（需同一 Wi-Fi）"

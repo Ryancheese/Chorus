@@ -16,10 +16,6 @@ public final class SyncAudioPlayer: ObservableObject {
     private var format: AVAudioFormat
     private var started = false
     private var hasScheduledAudio = false
-    #if os(iOS)
-    private static let audioSessionQueue = DispatchQueue(label: "stereosync.audio-session")
-    #endif
-
     public init(sampleRate: Double = SyncProtocol.sampleRate) {
         format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -37,7 +33,7 @@ public final class SyncAudioPlayer: ObservableObject {
         guard !started else { return }
         guard let audioUnit = engine.outputNode.audioUnit else {
             throw NSError(
-                domain: "StereoSync.AudioOutput",
+                domain: "Chorus.AudioOutput",
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "无法访问本机音频输出单元"]
             )
@@ -53,7 +49,7 @@ public final class SyncAudioPlayer: ObservableObject {
         )
         guard status == noErr else {
             throw NSError(
-                domain: "StereoSync.AudioOutput",
+                domain: "Chorus.AudioOutput",
                 code: Int(status),
                 userInfo: [NSLocalizedDescriptionKey: "无法选择本机音频输出设备"]
             )
@@ -61,10 +57,10 @@ public final class SyncAudioPlayer: ObservableObject {
     }
     #endif
 
-    public func prepareSession(sampleRate: Double) throws {
+    public func prepareSession(sampleRate: Double) async throws {
         stop()
         #if os(iOS)
-        try configureAudioSession(active: true)
+        try await Self.configureAudioSession(active: true)
         #endif
         format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -125,28 +121,23 @@ public final class SyncAudioPlayer: ObservableObject {
         hasScheduledAudio = false
         isPlaying = false
         #if os(iOS)
-        try? configureAudioSession(active: false)
+        // Deactivate off the main actor so UI stays responsive.
+        Task {
+            try? await Self.configureAudioSession(active: false)
+        }
         #endif
     }
 
     #if os(iOS)
-    private func configureAudioSession(active: Bool) throws {
-        var result: Result<Void, Error> = .success(())
-        Self.audioSessionQueue.sync {
-            do {
-                let session = AVAudioSession.sharedInstance()
-                if active {
-                    // Keep the configuration minimal for broad iOS compatibility.
-                    try session.setCategory(.playback, mode: .default, options: [])
-                    try session.setActive(true)
-                } else {
-                    try session.setActive(false, options: .notifyOthersOnDeactivation)
-                }
-            } catch {
-                result = .failure(error)
-            }
+    private static func configureAudioSession(active: Bool) async throws {
+        let session = AVAudioSession.sharedInstance()
+        if active {
+            // Exclusive playback so other apps interrupt us when they take the speaker.
+            try session.setCategory(.playback, mode: .default, options: [])
+            try await session.setActive(true)
+        } else {
+            try await session.setActive(false, options: .notifyOthersOnDeactivation)
         }
-        try result.get()
     }
     #endif
 
