@@ -1,0 +1,70 @@
+import ActivityKit
+import StereoSyncCore
+import SwiftUI
+import WidgetKit
+
+@main
+struct StereoSyncLiveActivityWidgetBundle: WidgetBundle {
+    var body: some Widget {
+        StereoSyncLiveActivityWidget()
+    }
+}
+
+struct StereoSyncLiveActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: SpeakerActivityAttributes.self) { context in
+            HStack(spacing: 12) {
+                Image(systemName: "hifispeaker.fill")
+                    .foregroundStyle(.cyan)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("StereoSync")
+                        .font(.headline)
+                    Text(L10n.text(context.state.status.localizationKey))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: symbol(for: context.state.status))
+                    .foregroundStyle(.cyan)
+            }
+            .padding(.horizontal)
+            .activityBackgroundTint(.black.opacity(0.8))
+            .activitySystemActionForegroundColor(.white)
+            .widgetURL(URL(string: "stereosync://speaker"))
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "hifispeaker.fill")
+                        .foregroundStyle(.cyan)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Image(systemName: symbol(for: context.state.status))
+                        .foregroundStyle(.cyan)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(spacing: 3) {
+                        Text("StereoSync").font(.headline)
+                        Text(L10n.text(context.state.status.localizationKey))
+                            .font(.subheadline)
+                    }
+                }
+            } compactLeading: {
+                Image(systemName: "hifispeaker.fill")
+            } compactTrailing: {
+                Image(systemName: symbol(for: context.state.status))
+            } minimal: {
+                Image(systemName: "hifispeaker.fill")
+            }
+            .widgetURL(URL(string: "stereosync://speaker"))
+            .keylineTint(.cyan)
+        }
+    }
+
+    private func symbol(for status: SpeakerActivityStatus) -> String {
+        switch status {
+        case .waiting: "wifi"
+        case .connected: "link"
+        case .playing: "speaker.wave.3.fill"
+        }
+    }
+}

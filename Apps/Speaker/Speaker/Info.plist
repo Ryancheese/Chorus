@@ -4,12 +4,23 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>StereoSync</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>stereosync</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>StereoSync 需要局域网，才能被 Mac 发现并同步播放音频。</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_stereosync._tcp</string>
 	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

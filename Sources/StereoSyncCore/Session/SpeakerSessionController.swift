@@ -7,15 +7,28 @@ import UIKit
 
 @MainActor
 public final class SpeakerSessionController: ObservableObject {
-    public enum Phase: String {
+    public enum Phase: Equatable {
         case idle
-        case advertising = "可被发现"
+        case advertising
         case connecting
         case connected
-        case syncing = "校准时钟"
+        case syncing
         case ready
         case playing
         case error
+
+        public var displayName: String {
+            switch self {
+            case .idle: L10n.text("phase.idle")
+            case .advertising: L10n.text("phase.discoverable")
+            case .connecting: L10n.text("phase.connecting")
+            case .connected: L10n.text("phase.connected")
+            case .syncing: L10n.text("phase.calibrating")
+            case .ready: L10n.text("phase.ready")
+            case .playing: L10n.text("phase.playing")
+            case .error: L10n.text("phase.error")
+            }
+        }
     }
 
     @Published public private(set) var phase: Phase = .idle
@@ -172,11 +185,12 @@ public final class SpeakerSessionController: ObservableObject {
                 speakerSendTime: HostTime.now()
             )
             connection?.sendControl(.clockPong(pong))
-            offset = receive - ping.hostSendTime
-            clockOffsetMs = offset * 1000
             if phase != .playing {
                 phase = .ready
             }
+        case .clockOffset(let seconds):
+            offset = seconds
+            clockOffsetMs = seconds * 1000
         case .prepareSession(let session):
             guard sync === connection else { return }
             sessionID = session.sessionID
@@ -213,8 +227,23 @@ public final class SpeakerSessionController: ObservableObject {
             sessionTitle = nil
             connection?.sendControl(.stopAcknowledged(sessionID: id))
         case .goodbye:
-            stopAll()
-            startAdvertising()
+            // Keep the existing listener alive. Cancelling it and immediately
+            // rebinding the fixed port races with Network.framework's teardown
+            // and produces the misleading "Address already in use" error.
+            player.stop()
+            connection?.cancel()
+            audioConnection?.cancel()
+            connection = nil
+            audioConnection = nil
+            jitterBuffer = nil
+            sessionID = nil
+            lastStoppedSessionID = nil
+            playbackOffset = nil
+            hostName = nil
+            sessionTitle = nil
+            lastError = nil
+            phase = .advertising
+            statusText = "Mac 已移除本机，仍可等待新的连接"
         default:
             break
         }

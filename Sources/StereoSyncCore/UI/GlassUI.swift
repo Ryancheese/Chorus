@@ -12,6 +12,7 @@ public enum GlassTheme {
 public struct LiquidGlassBackground: View {
     public var intensity: Double
     @State private var phase: CGFloat = 0
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(intensity: Double = 1) {
         self.intensity = intensity
@@ -20,11 +21,7 @@ public struct LiquidGlassBackground: View {
     public var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 0.90, green: 0.94, blue: 0.98),
-                    Color(red: 0.86, green: 0.90, blue: 0.95),
-                    Color(red: 0.92, green: 0.93, blue: 0.96)
-                ],
+                colors: backgroundColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -42,7 +39,10 @@ public struct LiquidGlassBackground: View {
                 .offset(x: 120 + 14 * cos(phase * 1.1), y: 40 + 16 * sin(phase * 0.7))
 
             Circle()
-                .fill(Color.white.opacity(0.55 * intensity))
+                .fill(
+                    (colorScheme == .dark ? Color(red: 0.18, green: 0.23, blue: 0.32) : .white)
+                        .opacity(0.55 * intensity)
+                )
                 .frame(width: 220, height: 220)
                 .blur(radius: 40)
                 .offset(x: 20, y: 180 + 10 * sin(phase * 1.3))
@@ -52,6 +52,22 @@ public struct LiquidGlassBackground: View {
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                 phase = .pi * 2
             }
+        }
+    }
+
+    private var backgroundColors: [Color] {
+        if colorScheme == .dark {
+            [
+                Color(red: 0.04, green: 0.06, blue: 0.10),
+                Color(red: 0.07, green: 0.11, blue: 0.18),
+                Color(red: 0.05, green: 0.08, blue: 0.13)
+            ]
+        } else {
+            [
+                Color(red: 0.90, green: 0.94, blue: 0.98),
+                Color(red: 0.86, green: 0.90, blue: 0.95),
+                Color(red: 0.92, green: 0.93, blue: 0.96)
+            ]
         }
     }
 }
@@ -139,7 +155,7 @@ public struct GlassSecondaryButtonStyle: ButtonStyle {
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(.subheadline, design: .rounded).weight(.semibold))
-            .foregroundStyle(GlassTheme.brand.opacity(0.85))
+            .foregroundStyle(.primary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background {

@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "StereoSync",
+    defaultLocalization: "zh-Hans",
     platforms: [
         .macOS(.v14),
         .iOS(.v17)
@@ -13,7 +14,8 @@ let package = Package(
     targets: [
         .target(
             name: "StereoSyncCore",
-            path: "Sources/StereoSyncCore"
+            path: "Sources/StereoSyncCore",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "StereoSyncCoreTests",

@@ -1,5 +1,9 @@
 import AVFoundation
 import Foundation
+#if os(macOS)
+import AudioToolbox
+import CoreAudio
+#endif
 
 /// Schedules Float32 mono PCM on a precise host time using AVAudioEngine.
 @MainActor
@@ -12,6 +16,9 @@ public final class SyncAudioPlayer: ObservableObject {
     private var format: AVAudioFormat
     private var started = false
     private var hasScheduledAudio = false
+    #if os(iOS)
+    private static let audioSessionQueue = DispatchQueue(label: "stereosync.audio-session")
+    #endif
 
     public init(sampleRate: Double = SyncProtocol.sampleRate) {
         format = AVAudioFormat(
@@ -24,8 +31,41 @@ public final class SyncAudioPlayer: ObservableObject {
         engine.connect(player, to: engine.mainMixerNode, format: format)
     }
 
+    #if os(macOS)
+    /// Select a physical output device before preparing a playback session.
+    public func setOutputDevice(_ deviceID: AudioDeviceID) throws {
+        guard !started else { return }
+        guard let audioUnit = engine.outputNode.audioUnit else {
+            throw NSError(
+                domain: "StereoSync.AudioOutput",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "无法访问本机音频输出单元"]
+            )
+        }
+        var id = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &id,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw NSError(
+                domain: "StereoSync.AudioOutput",
+                code: Int(status),
+                userInfo: [NSLocalizedDescriptionKey: "无法选择本机音频输出设备"]
+            )
+        }
+    }
+    #endif
+
     public func prepareSession(sampleRate: Double) throws {
         stop()
+        #if os(iOS)
+        try configureAudioSession(active: true)
+        #endif
         format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
             sampleRate: sampleRate,
@@ -84,7 +124,31 @@ public final class SyncAudioPlayer: ObservableObject {
         }
         hasScheduledAudio = false
         isPlaying = false
+        #if os(iOS)
+        try? configureAudioSession(active: false)
+        #endif
     }
+
+    #if os(iOS)
+    private func configureAudioSession(active: Bool) throws {
+        var result: Result<Void, Error> = .success(())
+        Self.audioSessionQueue.sync {
+            do {
+                let session = AVAudioSession.sharedInstance()
+                if active {
+                    // Keep the configuration minimal for broad iOS compatibility.
+                    try session.setCategory(.playback, mode: .default, options: [])
+                    try session.setActive(true)
+                } else {
+                    try session.setActive(false, options: .notifyOthersOnDeactivation)
+                }
+            } catch {
+                result = .failure(error)
+            }
+        }
+        try result.get()
+    }
+    #endif
 
     private func machHostTime(afterSeconds seconds: TimeInterval) -> UInt64 {
         var info = mach_timebase_info_data_t()

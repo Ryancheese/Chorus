@@ -1,0 +1,2 @@
+"NSLocalNetworkUsageDescription" = "StereoSync needs local network access to find and connect nearby iPhone and iPad speakers.";
+"NSMicrophoneUsageDescription" = "StereoSync needs to read the BlackHole virtual audio input to play system audio with a shared delay.";

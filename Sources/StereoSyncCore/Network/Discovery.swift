@@ -2,14 +2,17 @@ import Foundation
 import Network
 
 enum LocalNetworkErrorText {
-    /// Map Bonjour / local-network NWErrors to actionable Chinese copy.
+    /// Map Bonjour / local-network NWErrors to actionable localized copy.
     static func describe(_ error: Error) -> String {
         let text = error.localizedDescription
         if text.contains("-65555") || text.contains("NoAuth") {
-            return "Bonjour 未授权（NoAuth）。请删除 App 重装并允许「本地网络」，或用下方 IP 在 Mac 上手动连接。"
+            return L10n.text("error.bonjour.noauth")
         }
         if text.contains("-65570") || text.contains("PolicyDenied") {
-            return "本地网络权限被拒绝。请到「设置 → StereoSync → 本地网络」打开。"
+            return L10n.text("error.local.network")
+        }
+        if text.contains("Address already in use") || text.contains("error 48") {
+            return L10n.text("error.port.occupied")
         }
         return text
     }
@@ -47,7 +50,7 @@ public struct DiscoveredPeer: Identifiable, Hashable, Sendable {
 @MainActor
 public final class PeerBrowser: ObservableObject {
     @Published public private(set) var peers: [DiscoveredPeer] = []
-    @Published public private(set) var statusText = "正在搜索…"
+    @Published public private(set) var statusText = L10n.text("status.searching")
     @Published public private(set) var lastError: String?
 
     private var browser: NWBrowser?
@@ -57,7 +60,7 @@ public final class PeerBrowser: ObservableObject {
 
     public func start() {
         stop()
-        statusText = "正在搜索局域网扬声器…"
+        statusText = L10n.text("status.searching")
         lastError = nil
         // This app is LAN-only. `nil` includes default/wide-area browse domains,
         // which can fail with DNSService NoAuth on managed networks.
@@ -71,15 +74,15 @@ public final class PeerBrowser: ObservableObject {
             Task { @MainActor in
                 switch state {
                 case .ready:
-                    self?.statusText = "已开始搜索，等待设备广播…"
+                    self?.statusText = L10n.text("status.search.ready")
                     self?.lastError = nil
                 case .failed(let error):
-                    self?.statusText = "搜索失败"
+                    self?.statusText = L10n.text("status.search.failed")
                     self?.lastError = LocalNetworkErrorText.describe(error)
                 case .cancelled:
-                    self?.statusText = "搜索已停止"
+                    self?.statusText = L10n.text("status.search.stopped")
                 case .waiting(let error):
-                    self?.statusText = "等待本地网络权限…"
+                    self?.statusText = L10n.text("status.wait.network")
                     self?.lastError = LocalNetworkErrorText.describe(error)
                 default:
                     break
@@ -96,7 +99,7 @@ public final class PeerBrowser: ObservableObject {
             Task { @MainActor in
                 self?.peers = peers
                 if peers.isEmpty {
-                    self?.statusText = "未发现设备，可用下方手动 IP 连接"
+                    self?.statusText = L10n.text("status.no.devices")
                 } else {
                     self?.statusText = "发现 \(peers.count) 台设备"
                 }

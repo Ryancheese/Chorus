@@ -31,6 +31,7 @@ public enum MessageType: UInt8, Codable, Sendable {
     case goodbye = 10
     case audioChannelHello = 11
     case stopAcknowledged = 12
+    case clockOffset = 13
 }
 
 public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
@@ -135,6 +136,7 @@ public enum ControlPayload: Codable, Sendable {
     case stopPlayback(sessionID: UUID)
     case audioChannelHello(deviceID: String)
     case stopAcknowledged(sessionID: UUID)
+    case clockOffset(seconds: TimeInterval)
     case heartbeat(deviceID: String)
     case goodbye(deviceID: String)
 
@@ -172,6 +174,9 @@ public enum ControlPayload: Codable, Sendable {
         case .stopAcknowledged(let sessionID):
             try container.encode(MessageType.stopAcknowledged, forKey: .type)
             try container.encode(["sessionID": sessionID.uuidString], forKey: .payload)
+        case .clockOffset(let seconds):
+            try container.encode(MessageType.clockOffset, forKey: .type)
+            try container.encode(seconds, forKey: .payload)
         case .heartbeat(let deviceID):
             try container.encode(MessageType.heartbeat, forKey: .type)
             try container.encode(["deviceID": deviceID], forKey: .payload)
@@ -212,6 +217,8 @@ public enum ControlPayload: Codable, Sendable {
                 throw DecodingError.dataCorruptedError(forKey: .payload, in: container, debugDescription: "Missing sessionID")
             }
             self = .stopAcknowledged(sessionID: id)
+        case .clockOffset:
+            self = .clockOffset(seconds: try container.decode(TimeInterval.self, forKey: .payload))
         case .heartbeat:
             let dict = try container.decode([String: String].self, forKey: .payload)
             self = .heartbeat(deviceID: dict["deviceID"] ?? "")

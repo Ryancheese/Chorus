@@ -17,17 +17,18 @@ struct HostApp: App {
 struct HostRootView: View {
     @StateObject private var browser = PeerBrowser()
     @StateObject private var session = HostSessionController()
+    @StateObject private var languageSettings = LanguageSettings()
     @State private var selectedFileName: String?
     @State private var loadedTrack: DecodedTrack?
     @State private var playLocally = true
     @State private var isImporterPresented = false
-    @State private var connectedEndpoints: Set<String> = []
     @State private var appeared = false
+    @State private var isHelpPresented = false
     @State private var manualHost = ""
     @State private var manualPort = String(SyncBonjour.controlPort)
 
     private var canPlay: Bool {
-        loadedTrack != nil && !session.connectedSpeakers.isEmpty
+        loadedTrack != nil && !session.connectedSpeakers.isEmpty && !session.isStreamingSystemAudio
     }
 
     private var isLive: Bool {
@@ -35,6 +36,7 @@ struct HostRootView: View {
     }
 
     var body: some View {
+        let _ = languageSettings.selection
         ZStack {
             LiquidGlassBackground()
 
@@ -67,6 +69,10 @@ struct HostRootView: View {
         ) { result in
             handleImport(result)
         }
+        .sheet(isPresented: $isHelpPresented) {
+            StereoSyncHelpView(role: .host)
+                .frame(minWidth: 520, minHeight: 460)
+        }
     }
 
     private var header: some View {
@@ -76,13 +82,21 @@ struct HostRootView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("StereoSync")
                     .font(.system(size: 40, weight: .bold, design: .rounded))
-                    .foregroundStyle(GlassTheme.brand)
-                Text("把 Mac 的声音，同步到身边的 iPhone 与 iPad")
+                    .foregroundStyle(.primary)
+                Text(L10n.text("host.tagline"))
                     .font(.system(.body, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)
+            Button {
+                isHelpPresented = true
+            } label: {
+                Label(L10n.text("action.help"), systemImage: "questionmark.circle")
+            }
+            .buttonStyle(GlassSecondaryButtonStyle())
+            LanguageMenu(settings: languageSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
         }
     }
 
@@ -90,9 +104,9 @@ struct HostRootView: View {
         GlassPanel {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(session.phase.rawValue)
+                    Text(session.phase.displayName)
                         .font(.system(.title3, design: .rounded).weight(.semibold))
-                        .foregroundStyle(GlassTheme.brand)
+                        .foregroundStyle(.primary)
                     Text(session.statusText)
                         .font(.system(.subheadline, design: .rounded))
                         .foregroundStyle(.secondary)
@@ -121,7 +135,7 @@ struct HostRootView: View {
     private var devicesPanel: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 16) {
-                sectionTitle("附近扬声器", systemImage: "iphone.gen3")
+                sectionTitle(L10n.text("section.nearby"), systemImage: "iphone.gen3")
 
                 Text(browser.statusText)
                     .font(.system(.caption, design: .rounded))
@@ -134,7 +148,7 @@ struct HostRootView: View {
                 }
 
                 if browser.peers.isEmpty {
-                    emptyHint("自动发现失败时，看手机上的 IP，用下方手动连接")
+                    emptyHint(L10n.text("hint.discovery"))
                 } else {
                     ForEach(browser.peers) { peer in
                         peerRow(peer)
@@ -143,18 +157,22 @@ struct HostRootView: View {
 
                 Divider().opacity(0.25)
 
-                sectionTitle("手动连接", systemImage: "keyboard")
+                sectionTitle(L10n.text("section.manual.connect"), systemImage: "keyboard")
                 HStack(spacing: 10) {
-                    TextField("手机 IP，如 192.168.1.8", text: $manualHost)
+                    TextField(L10n.text("field.phone.ip"), text: $manualHost)
                         .textFieldStyle(.roundedBorder)
                         .frame(minWidth: 180)
-                    TextField("端口", text: $manualPort)
+                    TextField(L10n.text("field.port"), text: $manualPort)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 72)
-                    Button("连接") {
+                    let endpointLabel = "\(manualHost.trimmingCharacters(in: .whitespacesAndNewlines)):\(UInt16(manualPort) ?? SyncBonjour.controlPort)"
+                    Button(session.isConnected(endpointLabel: endpointLabel) ? L10n.text("action.disconnect") : L10n.text("action.connect")) {
                         let port = UInt16(manualPort) ?? SyncBonjour.controlPort
-                        session.connect(host: manualHost, port: port)
-                        connectedEndpoints.insert("\(manualHost):\(port)")
+                        if session.isConnected(endpointLabel: endpointLabel) {
+                            session.disconnect(endpointLabel: endpointLabel)
+                        } else {
+                            session.connect(host: manualHost, port: port)
+                        }
                     }
                     .buttonStyle(GlassSecondaryButtonStyle())
                     .disabled(manualHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -162,10 +180,10 @@ struct HostRootView: View {
 
                 Divider().opacity(0.25)
 
-                sectionTitle("已加入会话", systemImage: "hifispeaker.fill")
+                sectionTitle(L10n.text("section.session"), systemImage: "hifispeaker.fill")
 
                 if session.connectedSpeakers.isEmpty {
-                    emptyHint("连接一台设备后即可同步播放")
+                    emptyHint(L10n.text("hint.connect"))
                 } else {
                     ForEach(session.connectedSpeakers) { speaker in
                         HStack(spacing: 12) {
@@ -174,9 +192,13 @@ struct HostRootView: View {
                             Text(speaker.name)
                                 .font(.system(.body, design: .rounded).weight(.medium))
                             Spacer()
-                            Text("就绪")
+                            Text(L10n.text("phase.ready"))
                                 .font(.system(.caption, design: .rounded).weight(.semibold))
                                 .foregroundStyle(.secondary)
+                            Button(L10n.text("action.remove")) {
+                                session.disconnect(speaker)
+                            }
+                            .buttonStyle(GlassSecondaryButtonStyle())
                         }
                     }
                 }
@@ -187,18 +209,18 @@ struct HostRootView: View {
     private var playbackPanel: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 16) {
-                sectionTitle("播放", systemImage: "play.circle.fill")
+                sectionTitle(L10n.text("section.playback"), systemImage: "play.circle.fill")
 
                 Toggle(isOn: $playLocally) {
-                    Text("本机同时播放")
+                    Text(L10n.text("toggle.play.locally"))
                         .font(.system(.body, design: .rounded))
                 }
                 .tint(GlassTheme.accent)
 
                 HStack(spacing: 10) {
-                    Button("选择音频") { isImporterPresented = true }
+                    Button(L10n.text("action.choose.audio")) { isImporterPresented = true }
                         .buttonStyle(GlassSecondaryButtonStyle())
-                    Button("测试音调") {
+                    Button(L10n.text("action.test.tone")) {
                         let track = DemoTone.makeTrack()
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             loadedTrack = track
@@ -206,6 +228,19 @@ struct HostRootView: View {
                         }
                     }
                     .buttonStyle(GlassSecondaryButtonStyle())
+                    .disabled(session.isStreamingSystemAudio)
+
+                    Button(session.isStreamingSystemAudio ? L10n.text("action.stream.system.stop") : L10n.text("action.stream.system.start")) {
+                        if session.isStreamingSystemAudio {
+                            session.stop()
+                        } else {
+                            Task {
+                                await session.startUnifiedSystemAudioStreaming()
+                            }
+                        }
+                    }
+                    .buttonStyle(GlassSecondaryButtonStyle())
+                    .disabled(!session.isStreamingSystemAudio && session.connectedSpeakers.isEmpty)
 
                     if let name = selectedFileName {
                         Text(name)
@@ -217,14 +252,14 @@ struct HostRootView: View {
                 }
 
                 HStack(spacing: 12) {
-                    Button("同步播放") {
+                    Button(L10n.text("action.sync.play")) {
                         guard let track = loadedTrack else { return }
                         session.play(track: track, alsoPlayLocally: playLocally)
                     }
                     .buttonStyle(GlassPrimaryButtonStyle(enabled: canPlay))
                     .disabled(!canPlay)
 
-                    Button(session.isPaused ? "继续" : "暂停") {
+                    Button(session.isPaused ? L10n.text("action.resume") : L10n.text("action.pause")) {
                         if session.isPaused {
                             session.resume()
                         } else {
@@ -232,9 +267,9 @@ struct HostRootView: View {
                         }
                     }
                     .buttonStyle(GlassSecondaryButtonStyle())
-                    .disabled(session.phase != .playing && !session.isPaused)
+                    .disabled(session.isStreamingSystemAudio || (session.phase != .playing && !session.isPaused))
 
-                    Button("停止") { session.stop() }
+                    Button(L10n.text("action.stop")) { session.stop() }
                         .buttonStyle(GlassSecondaryButtonStyle())
                         .disabled(session.phase != .playing && !session.isPaused)
                 }
@@ -250,16 +285,14 @@ struct HostRootView: View {
             Text(peer.name)
                 .font(.system(.body, design: .rounded).weight(.medium))
             Spacer()
-            if connectedEndpoints.contains(peer.endpointDebug) {
-                Text("已连接")
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.secondary)
+            if session.isConnected(endpointLabel: peer.endpointDebug) {
+                Button(L10n.text("action.disconnect")) {
+                    session.disconnect(endpointLabel: peer.endpointDebug)
+                }
+                .buttonStyle(GlassSecondaryButtonStyle())
             } else {
-                Button("连接") {
+                Button(L10n.text("action.connect")) {
                     session.connect(to: peer)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        connectedEndpoints.insert(peer.endpointDebug)
-                    }
                 }
                 .buttonStyle(GlassSecondaryButtonStyle())
             }
@@ -269,7 +302,7 @@ struct HostRootView: View {
     private func sectionTitle(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .font(.system(.headline, design: .rounded))
-            .foregroundStyle(GlassTheme.brand.opacity(0.9))
+            .foregroundStyle(.primary)
             .labelStyle(.titleAndIcon)
     }
 

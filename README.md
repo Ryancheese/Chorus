@@ -35,6 +35,18 @@ open StereoSync.xcodeproj
 
 首次运行 iOS 会弹出本地网络权限，请允许。
 
+### 统一转播 Mac 系统声音
+
+此模式会让 Mac 本机与 iPhone/iPad 都延迟约 1.2–1.5 秒播放，以换取两端对齐。
+
+1. 安装 BlackHole 2ch：`brew install blackhole-2ch`
+2. 不要创建 Multi-Output Device；它会让 Mac 原声立即输出，破坏同步
+3. Host 已连接扬声器后，点「统一转播系统声音」
+
+首次使用需允许 StereoSync Host 访问音频输入。开始转播时，StereoSync 会自动把 macOS 的输入和输出切到 BlackHole；停止时会恢复原先的设备。
+
+受 DRM 保护的流媒体内容可能被 macOS 静音或限制采集；StereoSync 不尝试绕过该限制。
+
 ## 仓库结构
 
 ```

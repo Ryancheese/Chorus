@@ -12,7 +12,10 @@ struct SpeakerApp: App {
 
 struct SpeakerRootView: View {
     @StateObject private var session = SpeakerSessionController()
+    @StateObject private var languageSettings = LanguageSettings()
     @State private var appeared = false
+    @State private var isHelpPresented = false
+    @State private var liveActivityManager = SpeakerLiveActivityManager()
 
     private var isBroadcasting: Bool {
         session.phase != .idle
@@ -23,6 +26,7 @@ struct SpeakerRootView: View {
     }
 
     var body: some View {
+        let _ = languageSettings.selection
         ZStack {
             LiquidGlassBackground(intensity: 1.15)
 
@@ -44,13 +48,18 @@ struct SpeakerRootView: View {
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 18)
         }
-        .preferredColorScheme(.light)
         .onAppear {
             withAnimation(.spring(response: 0.75, dampingFraction: 0.84)) {
                 appeared = true
             }
+            liveActivityManager.update(phase: session.phase)
         }
-        .onDisappear { session.stopAll() }
+        .onChange(of: session.phase) { _, phase in
+            liveActivityManager.update(phase: phase)
+        }
+        .sheet(isPresented: $isHelpPresented) {
+            StereoSyncHelpView(role: .speaker)
+        }
     }
 
     private var brandBlock: some View {
@@ -63,9 +72,9 @@ struct SpeakerRootView: View {
             VStack(spacing: 8) {
                 Text("StereoSync")
                     .font(.system(size: 42, weight: .bold, design: .rounded))
-                    .foregroundStyle(GlassTheme.brand)
+                    .foregroundStyle(.primary)
 
-                Text("扬声器")
+                Text(L10n.text("app.speaker"))
                     .font(.system(.title3, design: .rounded).weight(.medium))
                     .foregroundStyle(.secondary)
             }
@@ -75,9 +84,9 @@ struct SpeakerRootView: View {
     private var glassStatus: some View {
         GlassPanel(cornerRadius: 28, padding: 24) {
             VStack(spacing: 12) {
-                Text(session.phase.rawValue)
+                Text(session.phase.displayName)
                     .font(.system(.title2, design: .rounded).weight(.semibold))
-                    .foregroundStyle(GlassTheme.brand)
+                    .foregroundStyle(.primary)
                     .contentTransition(.opacity)
 
                 Text(session.statusText)
@@ -89,7 +98,7 @@ struct SpeakerRootView: View {
                 if isBroadcasting && session.hostName == nil {
                     VStack(spacing: 6) {
                         if let address = session.connectionAddress {
-                            Text("本机地址")
+                            Text(L10n.text("label.address"))
                                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Text(address)
@@ -97,7 +106,7 @@ struct SpeakerRootView: View {
                                 .foregroundStyle(GlassTheme.accent)
                                 .textSelection(.enabled)
                         }
-                        Text("把上面的 IP 填进 Mac「手动连接」")
+                        Text(L10n.text("hint.manual.ip"))
                             .font(.system(.caption, design: .rounded))
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
@@ -108,10 +117,10 @@ struct SpeakerRootView: View {
                 if session.hostName != nil || session.clockOffsetMs != nil {
                     HStack(spacing: 18) {
                         if let host = session.hostName {
-                            metricChip(title: "主机", value: host)
+                            metricChip(title: L10n.text("label.host"), value: host)
                         }
-                        if let ms = session.clockOffsetMs {
-                            metricChip(title: "偏移", value: String(format: "%.0f ms", ms))
+                        if session.clockOffsetMs != nil {
+                            metricChip(title: L10n.text("label.clock"), value: L10n.text("label.calibrated"))
                         }
                     }
                     .padding(.top, 6)
@@ -127,7 +136,7 @@ struct SpeakerRootView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: session.phase.rawValue)
+        .animation(.spring(response: 0.45, dampingFraction: 0.86), value: session.phase.displayName)
     }
 
     private func metricChip(title: String, value: String) -> some View {
@@ -137,7 +146,7 @@ struct SpeakerRootView: View {
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                .foregroundStyle(GlassTheme.brand)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 14)
@@ -154,11 +163,24 @@ struct SpeakerRootView: View {
 
     private var primaryAction: some View {
         Button(action: toggle) {
-            Text(isBroadcasting ? "停止" : "开始广播")
+            Text(isBroadcasting ? L10n.text("action.stop") : L10n.text("action.start.broadcasting"))
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(GlassPrimaryButtonStyle(enabled: true))
         .shadow(color: GlassTheme.accent.opacity(0.22), radius: 24, y: 10)
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 14) {
+                LanguageMenu(settings: languageSettings)
+                Button {
+                    isHelpPresented = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .font(.title3)
+                }
+                .accessibilityLabel(L10n.text("action.help"))
+            }
+            .offset(y: -48)
+        }
     }
 
     private func toggle() {

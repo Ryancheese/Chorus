@@ -1,0 +1,2 @@
+"NSLocalNetworkUsageDescription" = "StereoSync가 주변 iPhone 및 iPad 스피커를 찾고 연결하려면 로컬 네트워크 접근이 필요합니다.";
+"NSMicrophoneUsageDescription" = "StereoSync가 동일한 지연으로 시스템 오디오를 재생하려면 BlackHole 가상 오디오 입력을 읽어야 합니다.";

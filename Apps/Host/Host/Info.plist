@@ -6,6 +6,8 @@
 	<string>StereoSync Host</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>StereoSync 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>StereoSync 需要读取 BlackHole 虚拟音频输入，以统一延迟播放系统声音。</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_stereosync._tcp</string>

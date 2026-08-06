@@ -32,3 +32,9 @@ Host 会向同一个监听端口建立两条 TCP：控制通道只传状态与�
 Speaker 调度：`localPlayAt = hostPlayAt + offset`
 
 Speaker 会先累积约 800 ms 的连续音频块再开始调度；Host 以 1.2–1.5 秒自适应前置时间发送，以吸收 Wi‑Fi 抖动。
+
+## 系统音频转播
+
+统一延迟模式使用 BlackHole 2ch 作为 macOS 系统默认输出。Host 从 BlackHole 读取 PCM 后，使用同一 `hostPlayAt` 同时输出到 Mac 实体扬声器与 iPhone，避免 Mac 原声直出造成不同步。
+
+开始转播时，Host 自动将 macOS 系统输入与输出切到仅 BlackHole 2ch，并在停止时恢复用户原来的设备。不能使用 Multi-Output Device；Host 输出只指向实体设备，避免回写 BlackHole 形成反馈。该能力需要 macOS 音频输入权限；受 DRM 保护的流媒体若被系统限制采集，将不会被绕过。

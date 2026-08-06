@@ -67,6 +67,15 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(receivedID, id)
     }
 
+    func testClockOffsetRoundTrip() throws {
+        let data = try MessageCodec.encodeControl(.clockOffset(seconds: -12.345))
+        let decoded = try MessageCodec.decodeControl(data)
+        guard case .clockOffset(let seconds) = decoded else {
+            return XCTFail("expected clock offset")
+        }
+        XCTAssertEqual(seconds, -12.345, accuracy: 0.000_001)
+    }
+
     @MainActor
     func testJitterBufferWaitsForTargetThenDrainsInOrder() {
         let id = UUID()
@@ -84,4 +93,37 @@ final class ProtocolTests: XCTestCase {
         leadTime.record(roundTrip: 0.01)
         XCTAssertGreaterThanOrEqual(leadTime.recommendedLeadTime, 1.2)
     }
+
+    func testPrimaryLocalesContainTranslatedHelpAction() {
+        XCTAssertEqual(L10n.supportedLanguageCodes, ["en", "zh-Hans", "ja", "ko"])
+        for languageCode in L10n.supportedLanguageCodes {
+            XCTAssertNotEqual(L10n.text("action.help", languageCode: languageCode), "action.help")
+        }
+    }
+
+    @MainActor
+    func testLanguageSelectionPersistsAndDefaultsToChineseFallback() {
+        let settings = LanguageSettings()
+        let original = settings.selection
+        defer { settings.selection = original }
+
+        settings.selection = .japanese
+        XCTAssertEqual(L10n.text("action.help"), "ヘルプ")
+        settings.selection = .chinese
+        XCTAssertEqual(L10n.text("action.help"), "使用帮助")
+    }
+
+    func testSpeakerLiveActivityStatusMapping() {
+        XCTAssertEqual(SpeakerActivityStatus.from(phase: .advertising), .waiting)
+        XCTAssertEqual(SpeakerActivityStatus.from(phase: .ready), .connected)
+        XCTAssertEqual(SpeakerActivityStatus.from(phase: .playing), .playing)
+        XCTAssertNil(SpeakerActivityStatus.from(phase: .idle))
+    }
+
+    #if os(macOS)
+    func testBlackHoleDeviceIsRecognized() {
+        let device = AudioDevice(id: 1, name: "BlackHole 2ch", inputChannels: 2, outputChannels: 2)
+        XCTAssertTrue(device.isBlackHole)
+    }
+    #endif
 }

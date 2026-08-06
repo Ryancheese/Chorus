@@ -16,6 +16,20 @@ settings:
     SWIFT_VERSION: "5.9"
     TARGETED_DEVICE_FAMILY: "1,2"
 
+schemes:
+  Host:
+    build:
+      targets:
+        Host: all
+    run:
+      config: Debug
+  Speaker:
+    build:
+      targets:
+        Speaker: all
+    run:
+      config: Debug
+
 targets:
   Host:
     type: application
@@ -32,6 +46,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: StereoSync Host
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: StereoSync 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: StereoSync 需要读取 BlackHole 虚拟音频输入，以统一延迟播放系统声音。
         LD_RUNPATH_SEARCH_PATHS: ["@executable_path/../Frameworks"]
         CODE_SIGN_ENTITLEMENTS: Apps/Host/Host/Host.entitlements
     dependencies:
@@ -62,5 +77,26 @@ targets:
     dependencies:
       - package: StereoSyncCore
         product: StereoSyncCore
+      - target: SpeakerLiveActivity
+        embed: true
     entitlements:
       path: Apps/Speaker/Speaker/Speaker.entitlements
+
+  SpeakerLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Apps/SpeakerLiveActivity
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stereosync.speaker.liveactivity
+        PRODUCT_NAME: StereoSync Live Activity
+        INFOPLIST_FILE: Apps/SpeakerLiveActivity/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - package: StereoSyncCore
+        product: StereoSyncCore
