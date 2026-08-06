@@ -194,7 +194,7 @@ public final class HostSessionController: ObservableObject {
 
     public static func defaultHostName() -> String {
         #if os(macOS)
-        return Host.current().localizedName ?? "Mac Host"
+        return Foundation.Host.current().localizedName ?? "Mac Host"
         #else
         return "Host"
         #endif
