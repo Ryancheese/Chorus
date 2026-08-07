@@ -42,6 +42,7 @@
 "playlist.added.none" = "再生できる音声ファイルが見つかりません";
 "hint.playlist.empty" = "音声またはフォルダを選ぶと、ここに曲が一覧表示されます";
 "status.track.finished" = "曲の再生が終了しました";
+"status.speaker.catching.up" = "音声の到着が遅れたため、同期を調整しています…";
 "error.playlist.load" = "この曲を読み込めません。ファイルにアクセスできるか確認してください。";
 "error.playlist.import" = "インポートに失敗しました。もう一度お試しください。";
 "help.title" = "Chorus ヘルプ";

@@ -78,6 +78,15 @@ public final class SpeakerSessionController: ObservableObject {
     private let player = SyncAudioPlayer()
     private var sessionID: UUID?
     private var jitterBuffer: AudioJitterBuffer?
+    /// Audio that arrived before prepare finished rebuilding the player.
+    private var pendingAudio: [(AudioChunkHeader, Data)] = []
+    /// startPlayback that arrived before prepare completed.
+    private var pendingStart: StartPlayback?
+    private var isPreparingSession = false
+    /// True after at least one chunk was scheduled for the current session.
+    private var hasScheduledAudioForSession = false
+    /// Consecutive mid-stream late drops; triggers a one-shot timeline rebase.
+    private var consecutiveLateDrops = 0
     private var lastStoppedSessionID: UUID?
     private var audioGuardTokens: [NSObjectProtocol] = []
     private var audioOutputObservation: AnyCancellable?
@@ -233,7 +242,13 @@ public final class SpeakerSessionController: ObservableObject {
             if sync === connection {
                 player.stop()
                 jitterBuffer = nil
+                pendingAudio.removeAll(keepingCapacity: false)
+                pendingStart = nil
+                isPreparingSession = false
+                hasScheduledAudioForSession = false
+                consecutiveLateDrops = 0
                 sessionID = nil
+                sessionTitle = nil
                 playbackOffset = nil
                 connection = nil
                 phase = .advertising
@@ -241,11 +256,14 @@ public final class SpeakerSessionController: ObservableObject {
                 hostName = nil
             } else if sync === audioConnection {
                 audioConnection = nil
-                if phase == .playing {
+                if phase == .playing || hasScheduledAudioForSession {
                     player.stop()
                     playbackOffset = nil
+                    hasScheduledAudioForSession = false
+                    consecutiveLateDrops = 0
                     phase = .ready
-                    statusText = "音频通道断开"
+                    statusText = L10n.text("error.audio.channel")
+                    lastError = L10n.text("error.audio.channel")
                 }
             }
         case .control(let payload):
@@ -316,6 +334,13 @@ public final class SpeakerSessionController: ObservableObject {
             sessionID = session.sessionID
             lastStoppedSessionID = nil
             sessionTitle = session.title
+            pendingAudio.removeAll(keepingCapacity: true)
+            pendingStart = nil
+            jitterBuffer = nil
+            hasScheduledAudioForSession = false
+            consecutiveLateDrops = 0
+            isPreparingSession = true
+            phase = .ready
             let prepareID = session.sessionID
             Task { @MainActor in
                 do {
@@ -331,18 +356,31 @@ public final class SpeakerSessionController: ObservableObject {
                     }
                     #endif
                     self.jitterBuffer = AudioJitterBuffer(sampleRate: session.sampleRate)
+                    self.isPreparingSession = false
                     self.lastError = nil
                     self.audioDisruptionMessage = nil
                     self.statusText = "准备播放：\(session.title)"
                     #if os(iOS)
                     self.audioOutputWarning = self.audioOutputMonitor.warningText
                     #endif
+                    if let start = self.pendingStart, start.sessionID == prepareID {
+                        self.pendingStart = nil
+                        self.applyStartPlayback(start)
+                    }
+                    self.flushPendingAudio()
+                    // If everything arrived too late and nothing was scheduled, don't fake “播放中”.
+                    if self.pendingStart == nil,
+                       self.hasScheduledAudioForSession == false,
+                       self.phase == .playing {
+                        self.phase = .ready
+                        self.statusText = L10n.text("status.speaker.catching.up")
+                    }
                 } catch is CancellationError {
                     guard self.sessionID == prepareID, sync === self.connection else { return }
-                    // Superseded by a newer prepare — keep waiting, don't scare the UI.
+                    self.isPreparingSession = false
                 } catch {
-                    // A superseded prepare must not wipe an already-playing session.
                     guard self.sessionID == prepareID, sync === self.connection else { return }
+                    self.isPreparingSession = false
                     self.abortSync(for: .audioUnavailable)
                 }
             }
@@ -354,12 +392,13 @@ public final class SpeakerSessionController: ObservableObject {
                 return
             }
             #endif
-            sessionID = start.sessionID
-            playbackOffset = offset
-            lastError = nil
-            audioDisruptionMessage = nil
-            statusText = "即将同步起播…"
-            phase = .playing
+            if isPreparingSession || jitterBuffer == nil {
+                // Host may send start before prepare finishes (playlist auto-next).
+                pendingStart = start
+                statusText = "即将同步起播…"
+                return
+            }
+            applyStartPlayback(start)
         case .stopPlayback(let id):
             guard sync === connection else { return }
             if id == lastStoppedSessionID {
@@ -370,6 +409,11 @@ public final class SpeakerSessionController: ObservableObject {
             sessionID = nil
             lastStoppedSessionID = id
             jitterBuffer = nil
+            pendingAudio.removeAll(keepingCapacity: false)
+            pendingStart = nil
+            hasScheduledAudioForSession = false
+            consecutiveLateDrops = 0
+            isPreparingSession = false
             playbackOffset = nil
             player.stop()
             phase = .ready
@@ -386,6 +430,9 @@ public final class SpeakerSessionController: ObservableObject {
             connection = nil
             audioConnection = nil
             jitterBuffer = nil
+            pendingAudio.removeAll(keepingCapacity: false)
+            pendingStart = nil
+            isPreparingSession = false
             sessionID = nil
             lastStoppedSessionID = nil
             playbackOffset = nil
@@ -400,17 +447,61 @@ public final class SpeakerSessionController: ObservableObject {
         }
     }
 
-    private func handleAudio(header: AudioChunkHeader, pcm: Data) {
-        guard header.sessionID == sessionID, let jitterBuffer else { return }
-        for chunk in jitterBuffer.append(header: header, pcm: pcm) {
-            let localPlayAt = chunk.header.hostPlayAt + (playbackOffset ?? offset)
-            // Playing a late chunk immediately causes an audible catch-up stutter.
-            guard localPlayAt > HostTime.now() + 0.02 else { continue }
-            player.scheduleChunk(pcmData: chunk.pcm, playAtLocalUptime: localPlayAt)
+    private func applyStartPlayback(_ start: StartPlayback) {
+        sessionID = start.sessionID
+        playbackOffset = offset
+        hasScheduledAudioForSession = false
+        consecutiveLateDrops = 0
+        lastError = nil
+        audioDisruptionMessage = nil
+        statusText = "即将同步起播…"
+        // Stay in ready until the first chunk is actually scheduled — avoids
+        // “播放中” with silence when early packets were all dropped as late.
+        if phase != .playing {
+            phase = .ready
         }
-        if player.isPlaying {
+    }
+
+    private func handleAudio(header: AudioChunkHeader, pcm: Data) {
+        guard header.sessionID == sessionID else { return }
+        guard let jitterBuffer else {
+            // Keep early chunks so auto-next doesn't lose the beginning of the track.
+            if pendingAudio.count < 256 {
+                pendingAudio.append((header, pcm))
+            }
+            return
+        }
+        scheduleFromJitter(jitterBuffer, header: header, pcm: pcm)
+    }
+
+    private func flushPendingAudio() {
+        guard let jitterBuffer else { return }
+        let queued = pendingAudio
+        pendingAudio.removeAll(keepingCapacity: true)
+        for (header, pcm) in queued where header.sessionID == sessionID {
+            scheduleFromJitter(jitterBuffer, header: header, pcm: pcm)
+        }
+    }
+
+    private func scheduleFromJitter(_ jitterBuffer: AudioJitterBuffer, header: AudioChunkHeader, pcm: Data) {
+        for chunk in jitterBuffer.append(header: header, pcm: pcm) {
+            var localPlayAt = chunk.header.hostPlayAt + (playbackOffset ?? offset)
+            let now = HostTime.now()
+            if localPlayAt <= now + 0.02 {
+                if !hasScheduledAudioForSession {
+                    // First chunk only: rebase so start isn't permanently late.
+                    let adjusted = now + 0.12
+                    playbackOffset = (playbackOffset ?? offset) + (adjusted - localPlayAt)
+                    localPlayAt = adjusted
+                }
+            }
+            // Once playback has started, SyncAudioPlayer appends to its existing
+            // render queue. Do not drop audio or mutate the clock offset here:
+            // both actions turn a brief network hiccup into repeated stutters.
+            player.scheduleChunk(pcmData: chunk.pcm, playAtLocalUptime: localPlayAt)
+            hasScheduledAudioForSession = true
+            consecutiveLateDrops = 0
             phase = .playing
-            // Successful audio means any prior “speaker busy” tip is stale.
             lastError = nil
             audioDisruptionMessage = nil
             statusText = sessionTitle.map { "播放中：\($0)" } ?? "播放中"
@@ -433,6 +524,11 @@ public final class SpeakerSessionController: ObservableObject {
         connection = nil
         audioConnection = nil
         jitterBuffer = nil
+        pendingAudio.removeAll(keepingCapacity: false)
+        pendingStart = nil
+        hasScheduledAudioForSession = false
+        consecutiveLateDrops = 0
+        isPreparingSession = false
         sessionID = nil
         lastStoppedSessionID = nil
         playbackOffset = nil

@@ -42,11 +42,18 @@ public final class HostSessionController: ObservableObject {
     public let localDevice: DeviceInfo
     private var connections: [SyncConnection] = []
     private var audioConnections: [SyncConnection] = []
+    /// Explicit control/audio pairing. Labels are not a reliable identity when
+    /// multiple phones connect through the same hotspot or reconnect quickly.
+    private var audioByControl: [ObjectIdentifier: SyncConnection] = [:]
+    private var controlByAudio: [ObjectIdentifier: SyncConnection] = [:]
     private var speakerConnections: [String: SyncConnection] = [:]
     private var synchronizers: [ObjectIdentifier: ClockSynchronizer] = [:]
     private var clockTimers: [ObjectIdentifier: Timer] = [:]
     private var adaptiveLeadTime = AdaptiveLeadTime()
     private let chunker = AudioChunker(samplesPerChunk: 2048)
+    /// File playback can use larger chunks than live capture. This halves
+    /// Network/AVAudioPlayerNode scheduling pressure on older phones.
+    private let fileChunker = AudioChunker(samplesPerChunk: 4096)
     private var currentSessionID: UUID?
     private var localPlayer: SyncAudioPlayer?
     private var audioStreamTask: Task<Void, Never>?
@@ -151,10 +158,7 @@ public final class HostSessionController: ObservableObject {
 
     private func disconnect(_ connection: SyncConnection, speakerID: String?) {
         connection.sendControl(.goodbye(deviceID: localDevice.id))
-        let audioLabel = "\(connection.remoteLabel)-audio"
-        let matchingAudio = audioConnections.filter { $0.remoteLabel == audioLabel }
-        matchingAudio.forEach { $0.cancel() }
-        audioConnections.removeAll { $0.remoteLabel == audioLabel }
+        removePairedAudio(for: connection)
         connection.cancel()
         remove(connection, reason: "已断开")
         if let speakerID {
@@ -181,6 +185,8 @@ public final class HostSessionController: ObservableObject {
     private func attach(_ control: SyncConnection, audio: SyncConnection, displayName: String) {
         attach(control, displayName: displayName)
         audioConnections.append(audio)
+        audioByControl[ObjectIdentifier(control)] = audio
+        controlByAudio[ObjectIdentifier(audio)] = control
         audio.start { [weak self] event in
             Task { @MainActor in
                 self?.handleAudioChannel(event, from: audio)
@@ -189,13 +195,25 @@ public final class HostSessionController: ObservableObject {
     }
 
     public func play(track: DecodedTrack, alsoPlayLocally: Bool) {
-        guard !connections.isEmpty, !audioConnections.isEmpty else {
+        let hasRemoteOutput = !connections.isEmpty && !audioConnections.isEmpty
+        guard hasRemoteOutput || alsoPlayLocally else {
             lastError = L10n.text("error.no.speakers")
             phase = .error
             return
         }
 
+        // Finish the previous session cleanly so speakers flush old audio/engine
+        // state before the next prepare — critical for playlist auto-advance sync.
+        if let previous = currentSessionID {
+            pendingStopSessionIDs.remove(previous)
+            pausedStopSessionIDs.remove(previous)
+            broadcast(.stopPlayback(sessionID: previous))
+        }
         audioStreamTask?.cancel()
+        audioStreamTask = nil
+        localPlayer?.stop()
+        localPlayer = nil
+
         isPaused = false
         pausedTrack = nil
         currentTrack = track
@@ -204,77 +222,121 @@ public final class HostSessionController: ObservableObject {
         currentSessionID = sessionID
         let prepare = PrepareSession(sessionID: sessionID, sampleRate: track.sampleRate, channels: 1, title: track.title)
         broadcast(.prepareSession(prepare))
+        phase = .syncingClock
+        statusText = "正在准备：\(track.title)"
 
-        let lead = adaptiveLeadTime.recommendedLeadTime
-        let hostPlayAt = HostTime.now() + lead
-        currentTrackStartAt = hostPlayAt
-        let start = StartPlayback(sessionID: sessionID, hostPlayAt: hostPlayAt, leadTime: lead)
-        broadcast(.startPlayback(start))
-
-        let chunks = chunker.chunks(from: track, sessionID: sessionID, hostPlayAtZero: hostPlayAt)
         let recipients = audioConnections
-        // Keep enough audio ahead of the speaker to absorb typical Wi‑Fi bursts.
-        let targetBufferedAudio = min(max(0.9, lead * 0.8), 1.1)
-        audioStreamTask = Task { [weak self] in
-            for (header, pcm) in chunks {
-                guard !Task.isCancelled, self?.currentSessionID == sessionID else { return }
-                let wait = header.hostPlayAt - HostTime.now() - targetBufferedAudio
-                if wait > 0 {
-                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
-                }
-                for connection in recipients {
-                    guard !Task.isCancelled, self?.currentSessionID == sessionID else { return }
-                    await connection.sendAudio(header: header, pcm: pcm)
+        audioStreamTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Speakers rebuild AVAudioEngine on prepare; give them enough time
+            // before we freeze hostPlayAt and push audio.
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled, self.currentSessionID == sessionID else { return }
+
+            // Prepare Mac local output during settle window so schedule isn't late.
+            // Never abort the whole remote session if local output fails.
+            var preparedLocal: SyncAudioPlayer?
+            if alsoPlayLocally {
+                let player = SyncAudioPlayer(sampleRate: track.sampleRate)
+                do {
+                    #if os(macOS)
+                    if let output = AudioDeviceList.builtInOutput() {
+                        try AudioDeviceList.setDefaultOutput(output.id)
+                        try player.setOutputDevice(output.id)
+                        try await player.prepareSession(sampleRate: track.sampleRate)
+                        guard self.currentSessionID == sessionID else {
+                            player.stop()
+                            return
+                        }
+                        preparedLocal = player
+                    } else {
+                        self.lastError = L10n.text("error.output.missing")
+                    }
+                    #else
+                    try await player.prepareSession(sampleRate: track.sampleRate)
+                    guard self.currentSessionID == sessionID else {
+                        player.stop()
+                        return
+                    }
+                    preparedLocal = player
+                    #endif
+                } catch {
+                    self.lastError = error.localizedDescription
                 }
             }
-            // Wait until the track would actually finish on the timeline, not
-            // merely when the last network chunk was queued.
+
+            guard !Task.isCancelled, self.currentSessionID == sessionID else {
+                preparedLocal?.stop()
+                return
+            }
+
+            // Keep enough runway for a weaker second phone without changing
+            // relative synchronization between devices.
+            let lead = max(self.adaptiveLeadTime.recommendedLeadTime, 1.4)
+            let hostPlayAt = HostTime.now() + lead
+            self.currentTrackStartAt = hostPlayAt
+            self.broadcast(.startPlayback(StartPlayback(
+                sessionID: sessionID,
+                hostPlayAt: hostPlayAt,
+                leadTime: lead
+            )))
+            if let preparedLocal {
+                self.localPlayer = preparedLocal
+                preparedLocal.schedule(pcm: track.pcmFloat32Mono, playAtLocalUptime: hostPlayAt)
+            }
+            self.phase = .playing
+            self.statusText = "播放中：\(track.title)"
+
+            let chunks = self.fileChunker.chunks(from: track, sessionID: sessionID, hostPlayAtZero: hostPlayAt)
+            let targetBufferedAudio = min(max(1.1, lead * 0.9), 1.3)
+            // Each speaker gets an independent paced stream. A temporary TCP
+            // back-pressure event on one phone must not stall every other phone.
+            await withTaskGroup(of: Void.self) { group in
+                for connection in recipients {
+                    group.addTask {
+                        await Self.stream(
+                            chunks,
+                            to: connection,
+                            targetBufferedAudio: targetBufferedAudio
+                        )
+                    }
+                }
+            }
+
             let endAt = hostPlayAt + track.duration
             let remaining = endAt - HostTime.now()
             if remaining > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
             }
-            await MainActor.run {
-                guard let self, self.currentSessionID == sessionID, !Task.isCancelled else { return }
-                self.audioStreamTask = nil
-                self.currentSessionID = nil
-                self.currentTrack = nil
-                self.currentTrackStartAt = nil
-                self.localPlayer?.stop()
-                self.localPlayer = nil
-                self.phase = self.connectedSpeakers.isEmpty ? .idle : .ready
-                self.statusText = L10n.text("status.track.finished")
-                self.finishedTrackToken = UUID()
-            }
+            guard self.currentSessionID == sessionID, !Task.isCancelled else { return }
+            // Tell speakers the session ended before auto-next prepare arrives.
+            self.broadcast(.stopPlayback(sessionID: sessionID))
+            self.audioStreamTask = nil
+            self.currentSessionID = nil
+            self.currentTrack = nil
+            self.currentTrackStartAt = nil
+            self.localPlayer?.stop()
+            self.localPlayer = nil
+            self.phase = self.connectedSpeakers.isEmpty ? .idle : .ready
+            self.statusText = L10n.text("status.track.finished")
+            self.finishedTrackToken = UUID()
         }
+    }
 
-        if alsoPlayLocally {
-            let player = SyncAudioPlayer(sampleRate: track.sampleRate)
-            localPlayer = player
-            Task { @MainActor in
-                do {
-                    #if os(macOS)
-                    guard let output = AudioDeviceList.builtInOutput() else {
-                        throw NSError(
-                            domain: "Chorus.AudioOutput",
-                            code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: L10n.text("error.output.missing")]
-                        )
-                    }
-                    try AudioDeviceList.setDefaultOutput(output.id)
-                    try player.setOutputDevice(output.id)
-                    #endif
-                    try await player.prepareSession(sampleRate: track.sampleRate)
-                    guard self.currentSessionID == sessionID else { return }
-                    player.schedule(pcm: track.pcmFloat32Mono, playAtLocalUptime: hostPlayAt)
-                } catch {
-                    self.lastError = error.localizedDescription
-                }
+    private nonisolated static func stream(
+        _ chunks: [(AudioChunkHeader, Data)],
+        to connection: SyncConnection,
+        targetBufferedAudio: TimeInterval
+    ) async {
+        for (header, pcm) in chunks {
+            guard !Task.isCancelled else { return }
+            let wait = header.hostPlayAt - HostTime.now() - targetBufferedAudio
+            if wait > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
             }
+            guard !Task.isCancelled else { return }
+            await connection.sendAudio(header: header, pcm: pcm)
         }
-
-        phase = .playing
-        statusText = "播放中：\(track.title)"
     }
 
     public func stop() {
@@ -550,7 +612,7 @@ public final class HostSessionController: ObservableObject {
             pcmFloat32Mono: remainingSamples
         )
         isPaused = !remainingSamples.isEmpty
-        phase = connectedSpeakers.isEmpty ? .idle : .ready
+        phase = .ready
         statusText = isPaused ? "已暂停" : "已播放完毕"
     }
 
@@ -560,6 +622,8 @@ public final class HostSessionController: ObservableObject {
     }
 
     private func requestStop(sessionID: UUID) {
+        // Local-only playback has nobody to acknowledge a stop.
+        guard !connections.isEmpty else { return }
         pendingStopSessionIDs.insert(sessionID)
         broadcast(.stopPlayback(sessionID: sessionID))
 
@@ -583,6 +647,8 @@ public final class HostSessionController: ObservableObject {
         audioConnections.forEach { $0.cancel() }
         connections.removeAll()
         audioConnections.removeAll()
+        audioByControl.removeAll()
+        controlByAudio.removeAll()
         speakerConnections.removeAll()
         connectedSpeakers.removeAll()
         synchronizers.removeAll()
@@ -610,9 +676,13 @@ public final class HostSessionController: ObservableObject {
             connection.sendControl(.audioChannelHello(deviceID: localDevice.id))
         case .disconnected:
             audioConnections.removeAll { $0 === connection }
-            if phase == .playing {
-                lastError = L10n.text("error.audio.channel")
-                stop()
+            let audioKey = ObjectIdentifier(connection)
+            if let control = controlByAudio.removeValue(forKey: audioKey) {
+                audioByControl[ObjectIdentifier(control)] = nil
+                // Detach only this speaker. Playback and the independent streams
+                // for all remaining speakers must continue.
+                control.cancel()
+                remove(control, reason: L10n.text("error.audio.channel"))
             }
         case .control, .audio:
             break
@@ -656,17 +726,12 @@ public final class HostSessionController: ObservableObject {
             }
         case .goodbye(let id):
             if let connection = speakerConnections[id] {
-                let audioLabel = "\(connection.remoteLabel)-audio"
-                audioConnections.filter { $0.remoteLabel == audioLabel }.forEach { $0.cancel() }
-                audioConnections.removeAll { $0.remoteLabel == audioLabel }
+                removePairedAudio(for: connection)
                 connection.cancel()
                 remove(connection, reason: "扬声器已退出同步")
                 speakerConnections[id] = nil
             }
             connectedSpeakers.removeAll { $0.id == id }
-            if connections.isEmpty, phase == .playing || isStreamingSystemAudio {
-                stop()
-            }
         case .stopAcknowledged(let id):
             guard pendingStopSessionIDs.remove(id) != nil else { return }
             let wasPaused = pausedStopSessionIDs.remove(id) != nil
@@ -696,9 +761,7 @@ public final class HostSessionController: ObservableObject {
         clockTimers[key]?.invalidate()
         clockTimers[key] = nil
         synchronizers[key] = nil
-        let audioLabel = "\(connection.remoteLabel)-audio"
-        audioConnections.filter { $0.remoteLabel == audioLabel }.forEach { $0.cancel() }
-        audioConnections.removeAll { $0.remoteLabel == audioLabel }
+        removePairedAudio(for: connection)
         connections.removeAll { $0 === connection }
         let disconnectedIDs = speakerConnections
             .filter { $0.value === connection }
@@ -707,6 +770,17 @@ public final class HostSessionController: ObservableObject {
         connectedSpeakers.removeAll { disconnectedIDs.contains($0.id) }
         if connections.isEmpty {
             connectedSpeakers.removeAll()
+            if currentSessionID != nil {
+                // Device connectivity must not invalidate local playback controls.
+                phase = .playing
+                statusText = playsLocally ? "设备已断开，本机继续播放" : "设备已断开"
+                return
+            }
+            if isPaused {
+                phase = .ready
+                statusText = "已暂停"
+                return
+            }
             phase = .idle
             // No hello/welcome yet → treat as LAN reachability failure (common on locked-down Wi‑Fi).
             let failedBeforeHandshake = disconnectedIDs.isEmpty
@@ -719,6 +793,14 @@ public final class HostSessionController: ObservableObject {
                     ?? L10n.text("status.disconnected")
             }
         }
+    }
+
+    private func removePairedAudio(for control: SyncConnection) {
+        let controlKey = ObjectIdentifier(control)
+        guard let audio = audioByControl.removeValue(forKey: controlKey) else { return }
+        controlByAudio[ObjectIdentifier(audio)] = nil
+        audioConnections.removeAll { $0 === audio }
+        audio.cancel()
     }
 
     private func broadcast(_ payload: ControlPayload) {

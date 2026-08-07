@@ -31,20 +31,13 @@ struct SpeakerRootView: View {
         ZStack {
             LiquidGlassBackground(intensity: 1.15)
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 24)
-
-                brandBlock
-                    .padding(.bottom, 28)
-
-                glassStatus
-                    .padding(.horizontal, 22)
-
-                Spacer()
-
-                primaryAction
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, 36)
+            GeometryReader { proxy in
+                ScrollView {
+                    responsiveContent(in: proxy.size)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: proxy.size.height)
+                }
+                .scrollBounceBehavior(.basedOnSize)
             }
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 18)
@@ -80,7 +73,64 @@ struct SpeakerRootView: View {
         .chorusAppearance(appearanceSettings)
     }
 
-    private var brandBlock: some View {
+    @ViewBuilder
+    private func responsiveContent(in size: CGSize) -> some View {
+        if size.width >= 760 {
+            wideLayout
+        } else {
+            compactLayout
+        }
+    }
+
+    private var compactLayout: some View {
+        VStack(spacing: 0) {
+            utilityBar
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, 22)
+                .padding(.top, 16)
+
+            Spacer(minLength: 20)
+
+            brandBlock(isWide: false)
+                .padding(.bottom, 28)
+
+            glassStatus
+                .padding(.horizontal, 22)
+
+            Spacer(minLength: 28)
+
+            primaryAction
+                .padding(.horizontal, 28)
+                .padding(.bottom, 28)
+        }
+    }
+
+    private var wideLayout: some View {
+        VStack(spacing: 0) {
+            utilityBar
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
+            Spacer(minLength: 24)
+
+            HStack(spacing: 48) {
+                brandBlock(isWide: true)
+                    .frame(maxWidth: .infinity)
+
+                VStack(spacing: 24) {
+                    glassStatus
+                    primaryAction
+                }
+                .frame(maxWidth: 520)
+            }
+
+            Spacer(minLength: 32)
+        }
+        .frame(maxWidth: 1080)
+        .padding(.horizontal, 48)
+        .padding(.vertical, 28)
+    }
+
+    private func brandBlock(isWide: Bool) -> some View {
         VStack(spacing: 18) {
             PulsingOrb(
                 isActive: isBroadcasting,
@@ -89,11 +139,11 @@ struct SpeakerRootView: View {
 
             VStack(spacing: 8) {
                 Text("Chorus")
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: isWide ? 56 : 42, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
 
                 Text(L10n.text("app.speaker"))
-                    .font(.system(.title3, design: .rounded).weight(.medium))
+                    .font(.system(isWide ? .title2 : .title3, design: .rounded).weight(.medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -202,19 +252,20 @@ struct SpeakerRootView: View {
         }
         .buttonStyle(GlassPrimaryButtonStyle(enabled: true))
         .shadow(color: GlassTheme.accent.opacity(0.22), radius: 24, y: 10)
-        .overlay(alignment: .topTrailing) {
-            HStack(spacing: 14) {
-                LanguageMenu(settings: languageSettings)
-                AppearanceMenu(settings: appearanceSettings)
-                Button {
-                    isHelpPresented = true
-                } label: {
-                    Image(systemName: "questionmark.circle")
-                        .font(.title3)
-                }
-                .accessibilityLabel(L10n.text("action.help"))
+    }
+
+    private var utilityBar: some View {
+        HStack(spacing: 16) {
+            LanguageMenu(settings: languageSettings)
+            AppearanceMenu(settings: appearanceSettings)
+            Button {
+                isHelpPresented = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.title3)
+                    .frame(width: 32, height: 32)
             }
-            .offset(y: -48)
+            .accessibilityLabel(L10n.text("action.help"))
         }
     }
 

@@ -42,6 +42,7 @@
 "playlist.added.none" = "未找到可播放的音频文件";
 "hint.playlist.empty" = "选择音频或文件夹，曲目会出现在这里";
 "status.track.finished" = "本曲已播完";
+"status.speaker.catching.up" = "音频稍晚到达，正在对齐…";
 "error.playlist.load" = "无法加载该曲目，请确认文件仍可访问。";
 "error.playlist.import" = "导入失败，请重试。";
 "help.title" = "Chorus 使用帮助";

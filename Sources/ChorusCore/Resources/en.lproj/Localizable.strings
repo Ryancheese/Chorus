@@ -42,6 +42,7 @@
 "playlist.added.none" = "No playable audio files found";
 "hint.playlist.empty" = "Choose audio or a folder — tracks show up here";
 "status.track.finished" = "Track finished";
+"status.speaker.catching.up" = "Audio arrived late; aligning…";
 "error.playlist.load" = "Could not load this track. Make sure the file is still available.";
 "error.playlist.import" = "Import failed. Please try again.";
 "help.title" = "Chorus Help";

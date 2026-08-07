@@ -110,7 +110,10 @@ public final class SyncAudioPlayer: ObservableObject {
                 dst.update(from: base, count: pcm.count)
             }
         }
+        enqueue(buffer, playAtLocalUptime: playAtLocalUptime)
+    }
 
+    private func enqueue(_ buffer: AVAudioPCMBuffer, playAtLocalUptime: TimeInterval) {
         if !player.isPlaying {
             player.play()
         }
@@ -129,11 +132,24 @@ public final class SyncAudioPlayer: ObservableObject {
     }
 
     public func scheduleChunk(pcmData: Data, playAtLocalUptime: TimeInterval) {
+        guard started else { return }
         let count = pcmData.count / MemoryLayout<Float>.size
-        let samples: [Float] = pcmData.withUnsafeBytes { raw in
-            Array(raw.bindMemory(to: Float.self).prefix(count))
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: AVAudioFrameCount(count)
+        ) else {
+            return
         }
-        schedule(pcm: samples, playAtLocalUptime: playAtLocalUptime)
+        buffer.frameLength = AVAudioFrameCount(count)
+        pcmData.withUnsafeBytes { raw in
+            guard let dst = buffer.floatChannelData?[0],
+                  let source = raw.bindMemory(to: Float.self).baseAddress
+            else {
+                return
+            }
+            dst.update(from: source, count: count)
+        }
+        enqueue(buffer, playAtLocalUptime: playAtLocalUptime)
     }
 
     public func stop() {

@@ -32,7 +32,7 @@ struct HostRootView: View {
 
     private var canPlay: Bool {
         playlist.currentItem != nil
-            && !session.connectedSpeakers.isEmpty
+            && (!session.connectedSpeakers.isEmpty || playLocally)
             && !session.isStreamingSystemAudio
     }
 
@@ -70,7 +70,12 @@ struct HostRootView: View {
             session.teardown()
         }
         .onChange(of: session.finishedTrackToken) { _, _ in
-            playNextIfPossible()
+            // Small gap so the previous stop/prepare settle can land on speakers
+            // before decoding + starting the next playlist item.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                playNextIfPossible()
+            }
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
