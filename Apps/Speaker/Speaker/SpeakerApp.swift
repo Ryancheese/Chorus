@@ -145,11 +145,27 @@ struct SpeakerRootView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
 
-                if let error = session.lastError {
+                if let error = session.lastError, session.phase != .playing {
                     Text(error)
                         .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.red.opacity(0.85))
                         .multilineTextAlignment(.center)
+                }
+
+                if let warning = session.networkWarning {
+                    Text(warning)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 2)
+                }
+
+                if let audioTip = session.audioOutputWarning {
+                    Text(audioTip)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 2)
                 }
             }
             .frame(maxWidth: .infinity)

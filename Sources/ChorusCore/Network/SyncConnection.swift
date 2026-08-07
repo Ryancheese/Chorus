@@ -17,36 +17,72 @@ public final class SyncConnection: @unchecked Sendable {
     private let unpacker = FrameIO.Unpacker()
     private var onEvent: ((SyncConnectionEvent) -> Void)?
     private let lock = NSLock()
+    private var connectTimeoutItem: DispatchWorkItem?
+    private var didBecomeReady = false
+    private var didEmitDisconnect = false
 
     public init(connection: NWConnection, remoteLabel: String = "peer") {
         self.connection = connection
         self.remoteLabel = remoteLabel
     }
 
-    public func start(onEvent: @escaping (SyncConnectionEvent) -> Void) {
+    /// - Parameter connectTimeout: Seconds to wait for `.ready` before failing.
+    ///   Corporate Wi‑Fi with client isolation often hangs until this fires.
+    public func start(connectTimeout: TimeInterval = 8, onEvent: @escaping (SyncConnectionEvent) -> Void) {
         lock.lock()
         self.onEvent = onEvent
+        self.didBecomeReady = false
+        self.didEmitDisconnect = false
         lock.unlock()
 
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
             case .ready:
+                self.clearConnectTimeout()
+                self.lock.lock()
+                self.didBecomeReady = true
+                self.lock.unlock()
                 self.emit(.connected)
                 self.receiveLoop()
             case .failed(let error):
-                self.emit(.disconnected(error.localizedDescription))
+                self.clearConnectTimeout()
+                self.emitDisconnected(error.localizedDescription)
+            case .waiting:
+                // Stay pending until ready or connectTimeout; isolation APs often stall here.
+                break
             case .cancelled:
-                self.emit(.disconnected(nil))
+                self.clearConnectTimeout()
+                self.emitDisconnected(nil)
             default:
                 break
             }
         }
         connection.start(queue: queue)
+
+        if connectTimeout > 0 {
+            let item = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.lock.lock()
+                let ready = self.didBecomeReady
+                self.lock.unlock()
+                guard !ready else { return }
+                self.emitDisconnected("Connection timed out")
+                self.connection.cancel()
+            }
+            connectTimeoutItem = item
+            queue.asyncAfter(deadline: .now() + connectTimeout, execute: item)
+        }
     }
 
     public func cancel() {
+        clearConnectTimeout()
         connection.cancel()
+    }
+
+    private func clearConnectTimeout() {
+        connectTimeoutItem?.cancel()
+        connectTimeoutItem = nil
     }
 
     public func sendControl(_ payload: ControlPayload) {
@@ -54,7 +90,7 @@ public final class SyncConnection: @unchecked Sendable {
             let data = try MessageCodec.encodeControl(payload)
             sendFrame(data)
         } catch {
-            emit(.disconnected("encode control failed: \(error)"))
+            emitDisconnected("encode control failed: \(error)")
         }
     }
 
@@ -66,7 +102,7 @@ public final class SyncConnection: @unchecked Sendable {
             let data = try MessageCodec.encodeAudioFrame(header: header, pcm: pcm)
             await sendFrameAndWait(data)
         } catch {
-            emit(.disconnected("encode audio failed: \(error)"))
+            emitDisconnected("encode audio failed: \(error)")
         }
     }
 
@@ -74,7 +110,7 @@ public final class SyncConnection: @unchecked Sendable {
         let framed = FrameIO.pack(payload)
         connection.send(content: framed, completion: .contentProcessed { [weak self] error in
             if let error {
-                self?.emit(.disconnected(error.localizedDescription))
+                self?.emitDisconnected(error.localizedDescription)
             }
         })
     }
@@ -84,7 +120,7 @@ public final class SyncConnection: @unchecked Sendable {
         await withCheckedContinuation { continuation in
             connection.send(content: framed, completion: .contentProcessed { [weak self] error in
                 if let error {
-                    self?.emit(.disconnected(error.localizedDescription))
+                    self?.emitDisconnected(error.localizedDescription)
                 }
                 continuation.resume()
             })
@@ -95,7 +131,7 @@ public final class SyncConnection: @unchecked Sendable {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 256 * 1024) { [weak self] content, _, isComplete, error in
             guard let self else { return }
             if let error {
-                self.emit(.disconnected(error.localizedDescription))
+                self.emitDisconnected(error.localizedDescription)
                 return
             }
             if let content {
@@ -104,7 +140,7 @@ public final class SyncConnection: @unchecked Sendable {
                 }
             }
             if isComplete {
-                self.emit(.disconnected(nil))
+                self.emitDisconnected(nil)
                 return
             }
             self.receiveLoop()
@@ -118,7 +154,7 @@ public final class SyncConnection: @unchecked Sendable {
                 let (header, pcm) = try MessageCodec.decodeAudioFrame(frame)
                 emit(.audio(header, pcm))
             } catch {
-                emit(.disconnected("bad audio frame"))
+                emitDisconnected("bad audio frame")
             }
             return
         }
@@ -126,8 +162,20 @@ public final class SyncConnection: @unchecked Sendable {
             let payload = try MessageCodec.decodeControl(frame)
             emit(.control(payload))
         } catch {
-            emit(.disconnected("bad control frame"))
+            emitDisconnected("bad control frame")
         }
+    }
+
+    private func emitDisconnected(_ reason: String?) {
+        lock.lock()
+        guard !didEmitDisconnect else {
+            lock.unlock()
+            return
+        }
+        didEmitDisconnect = true
+        let handler = onEvent
+        lock.unlock()
+        handler?(.disconnected(reason))
     }
 
     private func emit(_ event: SyncConnectionEvent) {

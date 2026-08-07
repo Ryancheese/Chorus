@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Combine
 
 #if canImport(AVFoundation)
 import AVFoundation
@@ -60,9 +61,14 @@ public final class SpeakerSessionController: ObservableObject {
     @Published public private(set) var connectionAddress: String?
     /// Non-nil when sync was aborted due to mirroring / speaker occupation; UI should alert.
     @Published public private(set) var audioDisruptionMessage: String?
+    /// VPN / offline / no-LAN hint while advertising.
+    @Published public private(set) var networkWarning: String?
+    /// Media volume / ringer tips (e.g. volume too low).
+    @Published public private(set) var audioOutputWarning: String?
 
     public let localDevice: DeviceInfo
     private let advertiser: PeerAdvertiser
+    private let audioOutputMonitor = AudioOutputMonitor()
     private var connection: SyncConnection?
     private var audioConnection: SyncConnection?
     /// Approximate `localTime - hostTime` from the latest ping.
@@ -74,6 +80,7 @@ public final class SpeakerSessionController: ObservableObject {
     private var jitterBuffer: AudioJitterBuffer?
     private var lastStoppedSessionID: UUID?
     private var audioGuardTokens: [NSObjectProtocol] = []
+    private var audioOutputObservation: AnyCancellable?
     private var isAbortingForAudio = false
 
     public init(deviceName: String? = nil) {
@@ -88,6 +95,11 @@ public final class SpeakerSessionController: ObservableObject {
         advertiser.onStatusChange = { [weak self] in
             self?.syncFromAdvertiser()
         }
+        audioOutputObservation = audioOutputMonitor.$warningText
+            .receive(on: RunLoop.main)
+            .sink { [weak self] text in
+                self?.audioOutputWarning = text
+            }
     }
 
     deinit {
@@ -99,11 +111,13 @@ public final class SpeakerSessionController: ObservableObject {
     public func startAdvertising() {
         lastError = nil
         audioDisruptionMessage = nil
+        audioOutputMonitor.start()
+        audioOutputWarning = audioOutputMonitor.warningText
         advertiser.start()
         isAdvertising = true
         phase = .advertising
         refreshConnectionAddress()
-        statusText = "等待 Mac 连接…"
+        statusText = L10n.text("status.wait.host")
         installAudioGuards()
         syncFromAdvertiser()
         #if os(iOS)
@@ -118,12 +132,22 @@ public final class SpeakerSessionController: ObservableObject {
     private func syncFromAdvertiser() {
         refreshConnectionAddress()
         isAdvertising = advertiser.isAdvertising
-        lastError = advertiser.lastError
+        // Once a Host session is live, advertiser blips (hotspot path changes)
+        // should not overwrite the session UI with red network noise.
+        let sessionLive = hostName != nil
+            || phase == .connected
+            || phase == .syncing
+            || phase == .ready
+            || phase == .playing
+        if !sessionLive {
+            lastError = advertiser.lastError
+        }
+        refreshNetworkWarning()
         if advertiser.isAdvertising, phase == .idle || phase == .error {
             phase = .advertising
             statusText = advertiser.bonjourUnavailable
-                ? "等待 Mac 手动连接…"
-                : "等待 Mac 连接…"
+                ? L10n.text("status.wait.manual")
+                : L10n.text("status.wait.host")
         }
         if !advertiser.isAdvertising, let err = advertiser.lastError, phase == .advertising {
             phase = .error
@@ -143,18 +167,44 @@ public final class SpeakerSessionController: ObservableObject {
         lastStoppedSessionID = nil
         playbackOffset = nil
         advertiser.stop()
+        audioOutputMonitor.stop()
         isAdvertising = false
         connectionAddress = nil
+        networkWarning = nil
+        audioOutputWarning = nil
         phase = .idle
-        statusText = "已停止"
+        statusText = L10n.text("status.stopped")
         hostName = nil
         sessionTitle = nil
     }
 
     private func refreshConnectionAddress() {
-        let ip = advertiser.localIPv4 ?? LocalNetworkAddress.primaryIPv4() ?? "未知IP"
-        let port = advertiser.listeningPort
-        connectionAddress = "\(ip):\(port)"
+        let ip = advertiser.localIPv4
+            ?? LocalNetworkAddress.primaryIPv4()
+            ?? L10n.text("label.unknown.ip")
+        connectionAddress = "\(ip):\(advertiser.listeningPort)"
+    }
+
+    private func refreshNetworkWarning() {
+        // Hotspot host (bridge100 / 172.20.10.1) must never look like a VPN.
+        if LocalNetworkAddress.isPersonalHotspotActive() {
+            networkWarning = nil
+            return
+        }
+        // Only the primary address on a tunnel counts — idle system utun* IPv4s don't.
+        if LocalNetworkAddress.vpnInterfacesPresent() {
+            networkWarning = L10n.text("network.warn.vpn")
+            return
+        }
+        if LocalNetworkAddress.primaryIPv4() == nil {
+            networkWarning = L10n.text("network.warn.no.lan")
+            return
+        }
+        if advertiser.bonjourUnavailable {
+            networkWarning = L10n.text("network.hint.bonjour.fallback")
+            return
+        }
+        networkWarning = nil
     }
 
     private func accept(_ nw: NWConnection) {
@@ -223,6 +273,8 @@ public final class SpeakerSessionController: ObservableObject {
             connection?.cancel()
             connection = sync
             hostName = info.name
+            lastError = nil
+            audioDisruptionMessage = nil
             connection?.sendControl(.welcome(localDevice))
             phase = .syncing
             statusText = "已连接 \(info.name)"
@@ -234,6 +286,8 @@ public final class SpeakerSessionController: ObservableObject {
             }
             #endif
             hostName = info.name
+            lastError = nil
+            audioDisruptionMessage = nil
             phase = .syncing
             statusText = "已连接 \(info.name)"
         case .clockPing(let ping):
@@ -262,21 +316,34 @@ public final class SpeakerSessionController: ObservableObject {
             sessionID = session.sessionID
             lastStoppedSessionID = nil
             sessionTitle = session.title
+            let prepareID = session.sessionID
             Task { @MainActor in
                 do {
                     try await player.prepareSession(sampleRate: session.sampleRate)
-                    guard self.sessionID == session.sessionID else { return }
+                    // Ignore stale prepare if Host already moved on / retried.
+                    guard self.sessionID == prepareID, sync === self.connection else { return }
                     #if os(iOS)
+                    self.audioOutputMonitor.refresh()
                     // Activation can briefly change the reported route; re-check after.
                     if let disruption = self.currentAudioBlocker() {
                         self.abortSync(for: disruption)
                         return
                     }
                     #endif
-                    jitterBuffer = AudioJitterBuffer(sampleRate: session.sampleRate)
-                    statusText = "准备播放：\(session.title)"
+                    self.jitterBuffer = AudioJitterBuffer(sampleRate: session.sampleRate)
+                    self.lastError = nil
+                    self.audioDisruptionMessage = nil
+                    self.statusText = "准备播放：\(session.title)"
+                    #if os(iOS)
+                    self.audioOutputWarning = self.audioOutputMonitor.warningText
+                    #endif
+                } catch is CancellationError {
+                    guard self.sessionID == prepareID, sync === self.connection else { return }
+                    // Superseded by a newer prepare — keep waiting, don't scare the UI.
                 } catch {
-                    abortSync(for: .audioUnavailable)
+                    // A superseded prepare must not wipe an already-playing session.
+                    guard self.sessionID == prepareID, sync === self.connection else { return }
+                    self.abortSync(for: .audioUnavailable)
                 }
             }
         case .startPlayback(let start):
@@ -289,6 +356,8 @@ public final class SpeakerSessionController: ObservableObject {
             #endif
             sessionID = start.sessionID
             playbackOffset = offset
+            lastError = nil
+            audioDisruptionMessage = nil
             statusText = "即将同步起播…"
             phase = .playing
         case .stopPlayback(let id):
@@ -323,6 +392,7 @@ public final class SpeakerSessionController: ObservableObject {
             hostName = nil
             sessionTitle = nil
             lastError = nil
+            audioDisruptionMessage = nil
             phase = .advertising
             statusText = "Mac 已移除本机，仍可等待新的连接"
         default:
@@ -340,6 +410,9 @@ public final class SpeakerSessionController: ObservableObject {
         }
         if player.isPlaying {
             phase = .playing
+            // Successful audio means any prior “speaker busy” tip is stale.
+            lastError = nil
+            audioDisruptionMessage = nil
             statusText = sessionTitle.map { "播放中：\($0)" } ?? "播放中"
         }
     }
@@ -483,13 +556,22 @@ public final class SpeakerSessionController: ObservableObject {
         default:
             // Ignore categoryChange from our own setActive/setCategory.
             refreshAudioEnvironmentHint()
+            audioOutputMonitor.refresh()
             return
         }
 
+        // Only abort when output actually left the built-in speaker/receiver.
+        // Activating `.playback` often emits a route change that still ends on
+        // the built-in speaker — aborting there causes false “无声/已退出”.
         if isInSyncSession {
-            abortSync(for: .audioRouteChanged)
+            if hasExternalAudioOutput {
+                abortSync(for: .audioRouteChanged)
+            } else {
+                audioOutputMonitor.refresh()
+            }
         } else {
             refreshAudioEnvironmentHint()
+            audioOutputMonitor.refresh()
         }
     }
 

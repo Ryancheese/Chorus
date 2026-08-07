@@ -17,7 +17,7 @@ Mac 播音频，同一 Wi‑Fi 下 iPhone / iPad 近同步同播的 Demo。
 - iOS / iPadOS 17+
 - Xcode 15+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）
-- Mac 与手机/平板在同一 Wi‑Fi（勿开 VPN/隔离 AP）
+- Mac 与手机/平板在同一 Wi‑Fi（勿开 VPN；公司/访客网常有客户端隔离，发现与手动连接都会失败，请改用个人热点或家庭网络）
 
 ## 快速开始
 

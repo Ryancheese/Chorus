@@ -36,6 +36,8 @@ public final class HostSessionController: ObservableObject {
     @Published public private(set) var bestRTT: TimeInterval?
     @Published public private(set) var isPaused = false
     @Published public private(set) var isStreamingSystemAudio = false
+    /// Bumps when a local track finishes naturally so UI can auto-advance.
+    @Published public private(set) var finishedTrackToken = UUID()
 
     public let localDevice: DeviceInfo
     private var connections: [SyncConnection] = []
@@ -104,7 +106,16 @@ public final class HostSessionController: ObservableObject {
         if connections.contains(where: { $0.remoteLabel == label }) {
             return
         }
-        statusText = "正在连接 \(label)…"
+
+        if ConnectFailureText.likelyDifferentSubnet(local: LocalNetworkAddress.primaryIPv4(), remote: trimmed) {
+            lastError = L10n.text("network.warn.subnet")
+        } else if LocalNetworkAddress.vpnInterfacesPresent() {
+            lastError = L10n.text("network.warn.vpn")
+        } else {
+            lastError = nil
+        }
+
+        statusText = L10n.format("status.connecting.to", label)
         phase = .connected
         let endpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(trimmed),
@@ -216,8 +227,24 @@ public final class HostSessionController: ObservableObject {
                     await connection.sendAudio(header: header, pcm: pcm)
                 }
             }
-            if self?.currentSessionID == sessionID {
-                self?.audioStreamTask = nil
+            // Wait until the track would actually finish on the timeline, not
+            // merely when the last network chunk was queued.
+            let endAt = hostPlayAt + track.duration
+            let remaining = endAt - HostTime.now()
+            if remaining > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            }
+            await MainActor.run {
+                guard let self, self.currentSessionID == sessionID, !Task.isCancelled else { return }
+                self.audioStreamTask = nil
+                self.currentSessionID = nil
+                self.currentTrack = nil
+                self.currentTrackStartAt = nil
+                self.localPlayer?.stop()
+                self.localPlayer = nil
+                self.phase = self.connectedSpeakers.isEmpty ? .idle : .ready
+                self.statusText = L10n.text("status.track.finished")
+                self.finishedTrackToken = UUID()
             }
         }
 
@@ -669,6 +696,9 @@ public final class HostSessionController: ObservableObject {
         clockTimers[key]?.invalidate()
         clockTimers[key] = nil
         synchronizers[key] = nil
+        let audioLabel = "\(connection.remoteLabel)-audio"
+        audioConnections.filter { $0.remoteLabel == audioLabel }.forEach { $0.cancel() }
+        audioConnections.removeAll { $0.remoteLabel == audioLabel }
         connections.removeAll { $0 === connection }
         let disconnectedIDs = speakerConnections
             .filter { $0.value === connection }
@@ -678,7 +708,16 @@ public final class HostSessionController: ObservableObject {
         if connections.isEmpty {
             connectedSpeakers.removeAll()
             phase = .idle
-            statusText = reason.map { "连接断开：\($0)" } ?? "连接断开"
+            // No hello/welcome yet → treat as LAN reachability failure (common on locked-down Wi‑Fi).
+            let failedBeforeHandshake = disconnectedIDs.isEmpty
+            if failedBeforeHandshake, let reason, !reason.isEmpty {
+                let mapped = ConnectFailureText.describe(reason)
+                lastError = mapped
+                statusText = L10n.format("status.connect.failed", mapped)
+            } else {
+                statusText = reason.map { L10n.format("status.disconnected.reason", $0) }
+                    ?? L10n.text("status.disconnected")
+            }
         }
     }
 

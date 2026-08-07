@@ -98,7 +98,29 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(L10n.supportedLanguageCodes, ["en", "zh-Hans", "ja", "ko"])
         for languageCode in L10n.supportedLanguageCodes {
             XCTAssertNotEqual(L10n.text("action.help", languageCode: languageCode), "action.help")
+            XCTAssertNotEqual(L10n.text("error.connect.timeout", languageCode: languageCode), "error.connect.timeout")
+            XCTAssertNotEqual(L10n.text("network.hint.multicast", languageCode: languageCode), "network.hint.multicast")
         }
+    }
+
+    func testSameIPv4SubnetDetection() {
+        XCTAssertTrue(LocalNetworkAddress.sameIPv4Subnet("192.168.1.8", "192.168.1.20"))
+        XCTAssertFalse(LocalNetworkAddress.sameIPv4Subnet("192.168.1.8", "10.0.0.5"))
+        XCTAssertFalse(LocalNetworkAddress.sameIPv4Subnet("not-an-ip", "192.168.1.1"))
+    }
+
+    func testPersonalHotspotDetection() {
+        XCTAssertTrue(LocalNetworkAddress.looksLikePersonalHotspot("172.20.10.5"))
+        XCTAssertTrue(LocalNetworkAddress.looksLikePersonalHotspot("172.20.10.1"))
+        XCTAssertTrue(LocalNetworkAddress.looksLikePersonalHotspot("192.168.43.2"))
+        XCTAssertFalse(LocalNetworkAddress.looksLikePersonalHotspot("192.168.1.8"))
+    }
+
+    func testVpnInterfacesPresentRequiresPrimaryTunnel() {
+        // Must follow primaryAddress(), not "any utun has an IPv4".
+        let primaryIsTunnel = LocalNetworkAddress.primaryAddress()
+            .map { LocalNetworkAddress.isVPNInterfaceName($0.interface) } ?? false
+        XCTAssertEqual(LocalNetworkAddress.vpnInterfacesPresent(), primaryIsTunnel)
     }
 
     @MainActor

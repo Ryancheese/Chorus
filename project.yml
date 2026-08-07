@@ -15,6 +15,8 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 schemes:
   Host:
@@ -44,6 +46,8 @@ targets:
         PRODUCT_NAME: Chorus Host
         INFOPLIST_FILE: Apps/Host/Host/Info.plist
         GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: Chorus Host
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Chorus 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Chorus 需要读取 BlackHole 虚拟音频输入，以统一延迟播放系统声音。
@@ -68,6 +72,8 @@ targets:
         PRODUCT_NAME: Chorus Speaker
         INFOPLIST_FILE: Apps/Speaker/Speaker/Info.plist
         GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: Chorus
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Chorus 需要局域网，才能被 Mac 发现并同步播放音频。
@@ -95,6 +101,8 @@ targets:
         PRODUCT_NAME: Chorus Live Activity
         INFOPLIST_FILE: Apps/SpeakerLiveActivity/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
     dependencies:

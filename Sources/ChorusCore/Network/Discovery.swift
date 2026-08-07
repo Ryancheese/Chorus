@@ -11,6 +11,9 @@ enum LocalNetworkErrorText {
         if text.contains("-65570") || text.contains("PolicyDenied") {
             return L10n.text("error.local.network")
         }
+        if text.contains("-65569") || text.contains("DefunctConnection") {
+            return L10n.text("error.connection.defunct")
+        }
         if text.contains("Address already in use") || text.contains("error 48") {
             return L10n.text("error.port.occupied")
         }
@@ -23,6 +26,11 @@ enum LocalNetworkErrorText {
             || text.contains("NoAuth")
             || text.contains("-65570")
             || text.contains("PolicyDenied")
+    }
+
+    static func isDefunctConnection(_ error: Error) -> Bool {
+        let text = error.localizedDescription
+        return text.contains("-65569") || text.contains("DefunctConnection")
     }
 }
 
@@ -52,9 +60,13 @@ public final class PeerBrowser: ObservableObject {
     @Published public private(set) var peers: [DiscoveredPeer] = []
     @Published public private(set) var statusText = L10n.text("status.searching")
     @Published public private(set) var lastError: String?
+    /// Set when browse stays empty long enough that multicast is likely blocked.
+    @Published public private(set) var networkHint: String?
 
     private var browser: NWBrowser?
     private let queue = DispatchQueue(label: "chorus.browser")
+    private var emptyDiscoveryTask: Task<Void, Never>?
+    private let emptyDiscoveryGrace: TimeInterval = 6
 
     public init() {}
 
@@ -62,6 +74,7 @@ public final class PeerBrowser: ObservableObject {
         stop()
         statusText = L10n.text("status.searching")
         lastError = nil
+        networkHint = nil
         // This app is LAN-only. `nil` includes default/wide-area browse domains,
         // which can fail with DNSService NoAuth on managed networks.
         let descriptor = NWBrowser.Descriptor.bonjour(
@@ -76,10 +89,14 @@ public final class PeerBrowser: ObservableObject {
                 case .ready:
                     self?.statusText = L10n.text("status.search.ready")
                     self?.lastError = nil
+                    self?.scheduleEmptyDiscoveryHint()
                 case .failed(let error):
+                    self?.cancelEmptyDiscoveryHint()
                     self?.statusText = L10n.text("status.search.failed")
                     self?.lastError = LocalNetworkErrorText.describe(error)
+                    self?.networkHint = L10n.text("network.hint.discovery.failed")
                 case .cancelled:
+                    self?.cancelEmptyDiscoveryHint()
                     self?.statusText = L10n.text("status.search.stopped")
                 case .waiting(let error):
                     self?.statusText = L10n.text("status.wait.network")
@@ -100,20 +117,45 @@ public final class PeerBrowser: ObservableObject {
                 self?.peers = peers
                 if peers.isEmpty {
                     self?.statusText = L10n.text("status.no.devices")
+                    self?.scheduleEmptyDiscoveryHint()
                 } else {
-                    self?.statusText = "发现 \(peers.count) 台设备"
+                    self?.cancelEmptyDiscoveryHint()
+                    self?.networkHint = nil
+                    self?.statusText = L10n.format("status.devices.found", peers.count)
                 }
             }
         }
 
         browser.start(queue: queue)
         self.browser = browser
+        scheduleEmptyDiscoveryHint()
     }
 
     public func stop() {
+        cancelEmptyDiscoveryHint()
         browser?.cancel()
         browser = nil
         peers = []
+        networkHint = nil
+    }
+
+    private func scheduleEmptyDiscoveryHint() {
+        cancelEmptyDiscoveryHint()
+        let grace = emptyDiscoveryGrace
+        emptyDiscoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(grace * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            guard self.peers.isEmpty, self.browser != nil else { return }
+            self.networkHint = L10n.text("network.hint.multicast")
+            if self.lastError == nil {
+                self.statusText = L10n.text("status.no.devices.restricted")
+            }
+        }
+    }
+
+    private func cancelEmptyDiscoveryHint() {
+        emptyDiscoveryTask?.cancel()
+        emptyDiscoveryTask = nil
     }
 
     nonisolated private static func makePeer(from result: NWBrowser.Result) -> DiscoveredPeer? {
@@ -184,7 +226,7 @@ public final class PeerAdvertiser: ObservableObject {
                         }
                         self.localIPv4 = LocalNetworkAddress.primaryIPv4()
                         if self.bonjourUnavailable {
-                            self.lastError = "自动发现不可用，请在 Mac 用本机 IP 手动连接。"
+                            self.lastError = L10n.text("network.hint.bonjour.fallback")
                         } else {
                             self.lastError = nil
                         }
@@ -195,6 +237,15 @@ public final class PeerAdvertiser: ObservableObject {
                             let message = LocalNetworkErrorText.describe(error)
                             self.start(advertiseBonjour: false)
                             self.lastError = message
+                            self.onStatusChange?()
+                            return
+                        }
+                        // Path changes (common on Personal Hotspot) invalidate the listener.
+                        // Restart quietly so an active TCP session can keep playing.
+                        if LocalNetworkErrorText.isDefunctConnection(error) {
+                            let keepBonjour = self.advertiseBonjour
+                            self.start(advertiseBonjour: keepBonjour)
+                            self.lastError = nil
                             self.onStatusChange?()
                             return
                         }

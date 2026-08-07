@@ -4,6 +4,10 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Chorus Host</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Chorus 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。</string>
 	<key>NSMicrophoneUsageDescription</key>

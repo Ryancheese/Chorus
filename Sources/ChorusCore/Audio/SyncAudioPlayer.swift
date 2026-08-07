@@ -16,6 +16,10 @@ public final class SyncAudioPlayer: ObservableObject {
     private var format: AVAudioFormat
     private var started = false
     private var hasScheduledAudio = false
+    /// Bumped on every prepare/stop so a stale async `setActive(false)` cannot
+    /// deactivate a newer playback session (that race = silent “播放中”).
+    private var sessionEpoch: UInt64 = 0
+
     public init(sampleRate: Double = SyncProtocol.sampleRate) {
         format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -25,6 +29,8 @@ public final class SyncAudioPlayer: ObservableObject {
         )!
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 1
+        player.volume = 1
     }
 
     #if os(macOS)
@@ -58,9 +64,16 @@ public final class SyncAudioPlayer: ObservableObject {
     #endif
 
     public func prepareSession(sampleRate: Double) async throws {
-        stop()
+        // Tear down the engine only — do NOT schedule an async session deactivate
+        // here, or it can race past the activate below and mute playback.
+        stopEngine(deactivateSession: false)
         #if os(iOS)
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
         try await Self.configureAudioSession(active: true)
+        guard epoch == sessionEpoch else {
+            throw CancellationError()
+        }
         #endif
         format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
@@ -70,7 +83,19 @@ public final class SyncAudioPlayer: ObservableObject {
         )!
         engine.disconnectNodeOutput(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 1
+        player.volume = 1
         try engine.start()
+        guard !Task.isCancelled else {
+            engine.stop()
+            throw CancellationError()
+        }
+        #if os(iOS)
+        guard epoch == sessionEpoch else {
+            engine.stop()
+            throw CancellationError()
+        }
+        #endif
         started = true
         hasScheduledAudio = false
     }
@@ -112,6 +137,10 @@ public final class SyncAudioPlayer: ObservableObject {
     }
 
     public func stop() {
+        stopEngine(deactivateSession: true)
+    }
+
+    private func stopEngine(deactivateSession: Bool) {
         player.stop()
         if started {
             engine.stop()
@@ -121,23 +150,34 @@ public final class SyncAudioPlayer: ObservableObject {
         hasScheduledAudio = false
         isPlaying = false
         #if os(iOS)
-        // Deactivate off the main actor so UI stays responsive.
-        Task {
+        guard deactivateSession else { return }
+        sessionEpoch &+= 1
+        let epoch = sessionEpoch
+        // Deactivate off the main actor so UI stays responsive; ignore if a
+        // newer prepareSession has already claimed the session.
+        Task(priority: .utility) {
+            let stillCurrent = await MainActor.run { epoch == self.sessionEpoch }
+            guard stillCurrent else { return }
             try? await Self.configureAudioSession(active: false)
         }
         #endif
     }
 
     #if os(iOS)
-    private static func configureAudioSession(active: Bool) async throws {
-        let session = AVAudioSession.sharedInstance()
-        if active {
-            // Exclusive playback so other apps interrupt us when they take the speaker.
-            try session.setCategory(.playback, mode: .default, options: [])
-            try await session.setActive(true)
-        } else {
-            try await session.setActive(false, options: .notifyOthersOnDeactivation)
-        }
+    /// Must not run `setActive` / `setCategory` on the main thread — iOS logs
+    /// SessionCore / AVAudioSession warnings and can hitch the UI.
+    nonisolated private static func configureAudioSession(active: Bool) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            let session = AVAudioSession.sharedInstance()
+            if active {
+                // `.playback` ignores the Ring/Silent hardware switch; media volume
+                // (side buttons / Control Center) still applies.
+                try session.setCategory(.playback, mode: .default, options: [])
+                try session.setActive(true)
+            } else {
+                try session.setActive(false, options: .notifyOthersOnDeactivation)
+            }
+        }.value
     }
     #endif
 
