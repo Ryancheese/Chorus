@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Chorus Speaker</string>
+    <string name="notification_channel_name">Chorus Speaker</string>
+    <string name="notification_channel_desc">保持扬声器会话在后台运行</string>
+    <string name="notif_advertising">正在广播</string>
+    <string name="notif_connected">已连接 Host</string>
+    <string name="notif_playing">同步播放中</string>
+    <string name="action_stop">停止</string>
+</resources>

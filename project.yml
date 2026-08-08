@@ -46,6 +46,7 @@ targets:
         PRODUCT_NAME: Chorus Host
         INFOPLIST_FILE: Apps/Host/Host/Info.plist
         GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: Chorus Host
@@ -72,6 +73,7 @@ targets:
         PRODUCT_NAME: Chorus Speaker
         INFOPLIST_FILE: Apps/Speaker/Speaker/Info.plist
         GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_KEY_CFBundleDisplayName: Chorus
