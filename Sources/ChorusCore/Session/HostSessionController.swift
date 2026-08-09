@@ -38,6 +38,8 @@ public final class HostSessionController: ObservableObject {
     @Published public private(set) var isStreamingSystemAudio = false
     /// Bumps when a local track finishes naturally so UI can auto-advance.
     @Published public private(set) var finishedTrackToken = UUID()
+    /// 0–1 smoothed peak for liquid-glass audio reactivity.
+    @Published public private(set) var audioLevel: Double = 0
 
     public let localDevice: DeviceInfo
     private var connections: [SyncConnection] = []
@@ -63,6 +65,9 @@ public final class HostSessionController: ObservableObject {
     private var currentTrack: DecodedTrack?
     private var currentTrackStartAt: TimeInterval?
     private var playsLocally = false
+    private var audioEnvelope: Float = 0
+    private var audioDecayTimer: Timer?
+    private var levelMeterTask: Task<Void, Never>?
     #if os(macOS)
     private var blackHoleCapture: BlackHoleAudioCapture?
     private var liveOutputDeviceID: AudioDeviceID?
@@ -320,6 +325,7 @@ public final class HostSessionController: ObservableObject {
             self.statusText = "播放中：\(track.title)"
 
             let chunks = self.fileChunker.chunks(from: track, sessionID: sessionID, hostPlayAtZero: hostPlayAt)
+            self.startLocalLevelMeter(chunks: chunks, sessionID: sessionID)
             let targetBufferedAudio = min(max(1.1, lead * 0.9), 1.3)
             // Each speaker gets an independent paced stream. A temporary TCP
             // back-pressure event on one phone must not stall every other phone.
@@ -383,6 +389,8 @@ public final class HostSessionController: ObservableObject {
         }
         audioStreamTask?.cancel()
         audioStreamTask = nil
+        levelMeterTask?.cancel()
+        levelMeterTask = nil
         currentSessionID = nil
         currentTrack = nil
         currentTrackStartAt = nil
@@ -390,8 +398,70 @@ public final class HostSessionController: ObservableObject {
         isPaused = false
         localPlayer?.stop()
         localPlayer = nil
+        resetAudioLevel()
         phase = connectedSpeakers.isEmpty ? .idle : .ready
         statusText = "已停止"
+    }
+
+    private func startLocalLevelMeter(chunks: [(AudioChunkHeader, Data)], sessionID: UUID) {
+        levelMeterTask?.cancel()
+        levelMeterTask = Task { [weak self] in
+            for (header, pcm) in chunks {
+                guard let self, !Task.isCancelled, self.currentSessionID == sessionID else { return }
+                let wait = header.hostPlayAt - HostTime.now()
+                if wait > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                }
+                guard !Task.isCancelled, self.currentSessionID == sessionID else { return }
+                self.noteAudioLevel(pcm: pcm)
+            }
+        }
+    }
+
+    private func noteAudioLevel(samples: [Float]) {
+        var peak: Float = 0
+        for s in samples { peak = max(peak, abs(s)) }
+        applyAudioPeak(peak)
+    }
+
+    private func noteAudioLevel(pcm: Data) {
+        let count = pcm.count / MemoryLayout<Float>.size
+        guard count > 0 else { return }
+        var peak: Float = 0
+        pcm.withUnsafeBytes { raw in
+            let floats = raw.bindMemory(to: Float.self)
+            for i in 0..<count {
+                peak = max(peak, abs(floats[i]))
+            }
+        }
+        applyAudioPeak(peak)
+    }
+
+    private func applyAudioPeak(_ peak: Float) {
+        audioEnvelope = max(peak, audioEnvelope * 0.82)
+        audioLevel = Double(min(1, audioEnvelope))
+        if audioDecayTimer == nil {
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.audioEnvelope *= 0.90
+                    if self.audioEnvelope < 0.008 {
+                        self.resetAudioLevel()
+                    } else {
+                        self.audioLevel = Double(self.audioEnvelope)
+                    }
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            audioDecayTimer = timer
+        }
+    }
+
+    private func resetAudioLevel() {
+        audioDecayTimer?.invalidate()
+        audioDecayTimer = nil
+        audioEnvelope = 0
+        audioLevel = 0
     }
 
     #if os(macOS)
@@ -547,6 +617,7 @@ public final class HostSessionController: ObservableObject {
         }
 
         liveSamples.append(contentsOf: samples)
+        noteAudioLevel(samples: samples)
         let samplesPerChunk = chunker.samplesPerChunk
         while liveSamples.count >= samplesPerChunk {
             let chunk = Array(liveSamples.prefix(samplesPerChunk))

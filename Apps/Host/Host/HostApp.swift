@@ -43,7 +43,7 @@ struct HostRootView: View {
     var body: some View {
         let _ = languageSettings.selection
         ZStack {
-            LiquidGlassBackground()
+            LiquidGlassBackground(audioLevel: session.audioLevel)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
@@ -100,7 +100,11 @@ struct HostRootView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 18) {
-            PulsingOrb(isActive: isLive, symbol: session.phase == .playing ? "speaker.wave.3.fill" : "dot.radiowaves.left.and.right")
+            PulsingOrb(
+                isActive: isLive,
+                symbol: session.phase == .playing ? "speaker.wave.3.fill" : "dot.radiowaves.left.and.right",
+                audioLevel: session.audioLevel
+            )
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Chorus")

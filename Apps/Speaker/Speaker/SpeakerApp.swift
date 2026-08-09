@@ -29,7 +29,7 @@ struct SpeakerRootView: View {
     var body: some View {
         let _ = languageSettings.selection
         ZStack {
-            LiquidGlassBackground(intensity: 1.15)
+            LiquidGlassBackground(intensity: 1.15, audioLevel: session.audioLevel)
 
             GeometryReader { proxy in
                 ScrollView {
@@ -139,7 +139,8 @@ struct SpeakerRootView: View {
         VStack(spacing: 18) {
             PulsingOrb(
                 isActive: isBroadcasting,
-                symbol: isPlaying ? "speaker.wave.3.fill" : "hifispeaker.fill"
+                symbol: isPlaying ? "speaker.wave.3.fill" : "hifispeaker.fill",
+                audioLevel: session.audioLevel
             )
 
             VStack(spacing: 8) {

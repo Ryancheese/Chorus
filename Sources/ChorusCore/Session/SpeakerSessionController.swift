@@ -69,6 +69,8 @@ public final class SpeakerSessionController: ObservableObject {
     @Published public private(set) var networkWarning: String?
     /// Media volume / ringer tips (e.g. volume too low).
     @Published public private(set) var audioOutputWarning: String?
+    /// 0–1 smoothed peak for liquid-glass audio reactivity.
+    @Published public private(set) var audioLevel: Double = 0
 
     public private(set) var localDevice: DeviceInfo
     /// Editable label shown to Host (persisted). iOS hides the system device name without entitlement.
@@ -98,6 +100,8 @@ public final class SpeakerSessionController: ObservableObject {
     private var audioGuardTokens: [NSObjectProtocol] = []
     private var audioOutputObservation: AnyCancellable?
     private var isAbortingForAudio = false
+    private var audioEnvelope: Float = 0
+    private var audioDecayTimer: Timer?
 
     public init(deviceName: String? = nil) {
         let resolvedName = deviceName ?? Self.resolvedSpeakerName()
@@ -200,6 +204,7 @@ public final class SpeakerSessionController: ObservableObject {
     public func stopAll() {
         removeAudioGuards()
         player.stop()
+        resetAudioLevel()
         connection?.cancel()
         audioConnection?.cancel()
         connection = nil
@@ -449,6 +454,7 @@ public final class SpeakerSessionController: ObservableObject {
             isPreparingSession = false
             playbackOffset = nil
             player.stop()
+            resetAudioLevel()
             phase = .ready
             statusText = "主机已停止"
             sessionTitle = nil
@@ -535,6 +541,7 @@ public final class SpeakerSessionController: ObservableObject {
             // render queue. Do not drop audio or mutate the clock offset here:
             // both actions turn a brief network hiccup into repeated stutters.
             player.scheduleChunk(pcmData: chunk.pcm, playAtLocalUptime: localPlayAt)
+            noteAudioLevel(pcm: chunk.pcm)
             hasScheduledAudioForSession = true
             consecutiveLateDrops = 0
             phase = .playing
@@ -542,6 +549,42 @@ public final class SpeakerSessionController: ObservableObject {
             audioDisruptionMessage = nil
             statusText = sessionTitle.map { "播放中：\($0)" } ?? "播放中"
         }
+    }
+
+    private func noteAudioLevel(pcm: Data) {
+        let count = pcm.count / MemoryLayout<Float>.size
+        guard count > 0 else { return }
+        var peak: Float = 0
+        pcm.withUnsafeBytes { raw in
+            let floats = raw.bindMemory(to: Float.self)
+            for i in 0..<count {
+                peak = max(peak, abs(floats[i]))
+            }
+        }
+        audioEnvelope = max(peak, audioEnvelope * 0.82)
+        audioLevel = Double(min(1, audioEnvelope))
+        if audioDecayTimer == nil {
+            let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.audioEnvelope *= 0.90
+                    if self.audioEnvelope < 0.008 {
+                        self.resetAudioLevel()
+                    } else {
+                        self.audioLevel = Double(self.audioEnvelope)
+                    }
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            audioDecayTimer = timer
+        }
+    }
+
+    private func resetAudioLevel() {
+        audioDecayTimer?.invalidate()
+        audioDecayTimer = nil
+        audioEnvelope = 0
+        audioLevel = 0
     }
 
     /// Tear down the host sync session, keep advertising, and surface a user-facing alert.
