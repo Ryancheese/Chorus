@@ -15,15 +15,18 @@ class MessageCodecTest {
             id = UUID.randomUUID().toString(),
             name = "Android-Speaker",
             role = DeviceRole.SPEAKER,
+            platform = "android",
         )
         val encoded = MessageCodec.encodeControl(ControlPayload.Hello(info))
         val json = String(encoded)
         assertTrue(json.contains("\"type\":1"))
         assertTrue(json.contains("\"role\":\"speaker\""))
+        assertTrue(json.contains("\"platform\":\"android\""))
         val decoded = MessageCodec.decodeControl(encoded) as ControlPayload.Hello
         assertEquals(info.id, decoded.info.id)
         assertEquals(info.name, decoded.info.name)
         assertEquals(DeviceRole.SPEAKER, decoded.info.role)
+        assertEquals("android", decoded.info.platform)
     }
 
     @Test

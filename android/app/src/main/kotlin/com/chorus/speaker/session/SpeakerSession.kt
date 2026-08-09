@@ -52,6 +52,7 @@ class SpeakerSession(
         id = UUID.randomUUID().toString(),
         name = "${Build.MODEL}-Speaker",
         role = DeviceRole.SPEAKER,
+        platform = "android",
     )
 
     private val lock = Any()

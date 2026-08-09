@@ -94,7 +94,12 @@ public final class SpeakerSessionController: ObservableObject {
 
     public init(deviceName: String? = nil) {
         let resolvedName = deviceName ?? Self.defaultSpeakerName()
-        localDevice = DeviceInfo(id: UUID().uuidString, name: resolvedName, role: .speaker)
+        localDevice = DeviceInfo(
+            id: UUID().uuidString,
+            name: resolvedName,
+            role: .speaker,
+            platform: Self.platformIdentifier()
+        )
         advertiser = PeerAdvertiser(deviceName: resolvedName)
         advertiser.onConnection = { [weak self] nw in
             Task { @MainActor in
@@ -699,8 +704,20 @@ public final class SpeakerSessionController: ObservableObject {
     public static func defaultSpeakerName() -> String {
         #if os(iOS)
         return UIDevice.current.name
+        #elseif os(macOS)
+        return Foundation.Host.current().localizedName ?? "Mac Speaker"
         #else
         return "Speaker"
+        #endif
+    }
+
+    public static func platformIdentifier() -> String {
+        #if os(iOS)
+        return "ios"
+        #elseif os(macOS)
+        return "macos"
+        #else
+        return "unknown"
         #endif
     }
 }

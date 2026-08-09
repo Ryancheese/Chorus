@@ -89,12 +89,17 @@ object MessageCodec {
             is ControlPayload.Goodbye -> JSONObject().put("deviceID", payload.deviceId)
         }
 
-    private fun encodeDeviceInfo(info: DeviceInfo): JSONObject =
-        JSONObject()
+    private fun encodeDeviceInfo(info: DeviceInfo): JSONObject {
+        val json = JSONObject()
             .put("id", info.id)
             .put("name", info.name)
             .put("role", info.role.wire)
             .put("protocolVersion", info.protocolVersion)
+        if (!info.platform.isNullOrBlank()) {
+            json.put("platform", info.platform)
+        }
+        return json
+    }
 
     private fun decodeDeviceInfo(obj: JSONObject): DeviceInfo =
         DeviceInfo(
@@ -102,6 +107,11 @@ object MessageCodec {
             name = obj.getString("name"),
             role = DeviceRole.fromWire(obj.getString("role")),
             protocolVersion = obj.optInt("protocolVersion", SyncProtocol.VERSION),
+            platform = if (obj.has("platform") && !obj.isNull("platform")) {
+                obj.getString("platform").takeIf { it.isNotBlank() }
+            } else {
+                null
+            },
         )
 
     private fun encodeClockPing(ping: ClockPingData): JSONObject =

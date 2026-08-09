@@ -5,7 +5,19 @@ data class DeviceInfo(
     val name: String,
     val role: DeviceRole,
     val protocolVersion: Int = SyncProtocol.VERSION,
-)
+    /** Optional platform hint: ios / android / windows / macos. */
+    val platform: String? = null,
+) {
+    val platformLabel: String
+        get() = when (platform?.trim()?.lowercase()) {
+            "ios" -> "iPhone"
+            "ipados" -> "iPad"
+            "android" -> "Android"
+            "windows" -> "Windows"
+            "macos", "mac" -> "Mac"
+            else -> if (role == DeviceRole.HOST) "Host" else "Speaker"
+        }
+}
 
 data class ClockPingData(
     val pingId: String,

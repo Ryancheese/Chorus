@@ -80,10 +80,18 @@ public final class HostSessionController: ObservableObject {
 
     public init(deviceName: String? = nil) {
         let resolvedName = deviceName ?? Self.defaultHostName()
+        #if os(macOS)
+        let platform: String? = "macos"
+        #elseif os(iOS)
+        let platform: String? = "ios"
+        #else
+        let platform: String? = nil
+        #endif
         localDevice = DeviceInfo(
             id: UUID().uuidString,
             name: resolvedName,
-            role: .host
+            role: .host,
+            platform: platform
         )
     }
 

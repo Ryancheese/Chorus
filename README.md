@@ -32,11 +32,14 @@ chmod +x scripts/generate-xcode.sh
 open Chorus.xcodeproj
 ```
 
-1. 选 **Speaker** scheme → 真机运行，点「开始广播」
-2. 选 **Host** scheme → My Mac 运行，等待设备出现
-3. 点「加载测试音调」或选择音频文件 →「同步播放」
+1. 选 **Speaker** scheme → iPhone/iPad 真机运行，点「开始广播」
+2. 或选 **SpeakerMac** scheme → 另一台 Mac 当扬声器（勿与 Host 同机同时开）
+3. 选 **Host** scheme → My Mac 运行，等待设备出现
+4. 点「加载测试音调」或选择音频文件 →「同步播放」
 
-首次运行 iOS 会弹出本地网络权限，请允许。
+首次运行会弹出本地网络权限，请允许。
+
+Windows 电脑也可作 Speaker：见 [ChorusForWindows](https://github.com/Ryancheese/ChorusForWindows) 的 `ChorusSpeaker-Setup-*.exe`。
 
 ### Android Speaker
 
@@ -71,6 +74,7 @@ Chorus/
 ├── Sources/ChorusCore/           # 协议 / 发现 / 时钟 / 音频 / 会话
 ├── Apps/Host/                    # macOS 主机 App
 ├── Apps/Speaker/                 # iOS 扬声器 App
+├── Apps/SpeakerMac/              # macOS 扬声器 App
 ├── android/                      # Android Speaker（Kotlin / Compose）
 ├── Tests/ChorusCoreTests/
 ├── project.yml                   # XcodeGen 工程描述

@@ -93,7 +93,7 @@
 "network.hint.bonjour.fallback" = "自动发现不可用，请在 Mac 用本机 IP 手动连接。";
 "error.bonjour.noauth" = "Bonjour 未授权。请允许“本地网络”权限，或用 IP 地址手动连接。";
 "error.local.network" = "本地网络权限被拒绝。请到“设置”中启用。";
-"error.port.occupied" = "广播端口暂时被占用。请稍候后重新开始广播。";
+"error.port.occupied" = "端口 17482 已被占用。请关闭本机 Chorus Host / 其他 Speaker 后再试。";
 "error.enter.ip" = "请输入手机显示的 IP 地址。";
 "error.connection.defunct" = "局域网监听因网络切换失效，已自动重试。若正在播放可忽略。";
 "error.connect.failed" = "无法连接到设备。";

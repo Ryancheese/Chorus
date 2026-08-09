@@ -93,7 +93,7 @@
 "network.hint.bonjour.fallback" = "Automatic discovery is unavailable. Connect from the Mac using this device’s IP.";
 "error.bonjour.noauth" = "Bonjour is not authorized. Allow Local Network access or connect manually with the IP address.";
 "error.local.network" = "Local Network permission was denied. Enable it in Settings.";
-"error.port.occupied" = "The broadcast port is temporarily in use. Wait a moment and start broadcasting again.";
+"error.port.occupied" = "Port 17482 is in use. Quit Chorus Host or another Speaker on this Mac, then try again.";
 "error.enter.ip" = "Enter the IP address shown on the phone.";
 "error.connection.defunct" = "LAN listener was reset after a network change and is retrying. Safe to ignore while playing.";
 "error.connect.failed" = "Could not connect to the device.";

@@ -39,17 +39,38 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
     public var name: String
     public var role: Role
     public var protocolVersion: UInt16
+    /// Optional platform hint: ios / android / windows / macos.
+    public var platform: String?
 
     public enum Role: String, Codable, Sendable {
         case host
         case speaker
     }
 
-    public init(id: String, name: String, role: Role, protocolVersion: UInt16 = SyncProtocol.version) {
+    public init(
+        id: String,
+        name: String,
+        role: Role,
+        protocolVersion: UInt16 = SyncProtocol.version,
+        platform: String? = nil
+    ) {
         self.id = id
         self.name = name
         self.role = role
         self.protocolVersion = protocolVersion
+        self.platform = platform
+    }
+
+    /// Short label for Host UI.
+    public var platformLabel: String {
+        switch platform?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "ios": return "iPhone"
+        case "ipados": return "iPad"
+        case "android": return "Android"
+        case "windows": return "Windows"
+        case "macos", "mac": return "Mac"
+        default: return role == .host ? "Host" : "Speaker"
+        }
     }
 }
 
