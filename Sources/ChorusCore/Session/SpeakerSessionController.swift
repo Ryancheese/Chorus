@@ -793,8 +793,10 @@ public final class SpeakerSessionController: ObservableObject {
             }
         }
         guard !identifier.isEmpty else { return UIDevice.current.model }
-        return utTypeModelName(for: identifier)
-            ?? marketingName(for: identifier)
+        // Prefer our marketing map: Apple's internal ids do not match product numbers
+        // (e.g. iPhone 11 == "iPhone12,1").
+        return marketingName(for: identifier)
+            ?? utTypeModelName(for: identifier)
             ?? identifier
         #elseif os(macOS)
         return Foundation.Host.current().localizedName
@@ -812,7 +814,9 @@ public final class SpeakerSessionController: ObservableObject {
             if let type = UTType(tag: identifier, tagClass: tagClass, conformingTo: superType),
                let name = type.localizedDescription?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-               !name.isEmpty {
+               !name.isEmpty,
+               // Reject raw identifiers if UTType echoes them back.
+               name.compare(identifier, options: .caseInsensitive) != .orderedSame {
                 return name
             }
         }
@@ -820,19 +824,37 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     private static func marketingName(for identifier: String) -> String? {
-        // Keep a short recent map; unknown ids still show UTType / raw identifier.
+        // Internal hw id → retail name. Numbers diverge on purpose (iPhone12,1 = iPhone 11).
         let map: [String: String] = [
+            // iPhone X / XS / XR
+            "iPhone10,3": "iPhone X", "iPhone10,6": "iPhone X",
+            "iPhone11,2": "iPhone XS", "iPhone11,4": "iPhone XS Max", "iPhone11,6": "iPhone XS Max",
+            "iPhone11,8": "iPhone XR",
+            // iPhone 11
+            "iPhone12,1": "iPhone 11", "iPhone12,3": "iPhone 11 Pro", "iPhone12,5": "iPhone 11 Pro Max",
+            // iPhone 12
+            "iPhone13,1": "iPhone 12 mini", "iPhone13,2": "iPhone 12",
+            "iPhone13,3": "iPhone 12 Pro", "iPhone13,4": "iPhone 12 Pro Max",
+            // iPhone 13
             "iPhone14,2": "iPhone 13 Pro", "iPhone14,3": "iPhone 13 Pro Max",
             "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13",
+            // iPhone 14
             "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus",
             "iPhone15,2": "iPhone 14 Pro", "iPhone15,3": "iPhone 14 Pro Max",
+            // iPhone 15
             "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus",
             "iPhone16,1": "iPhone 15 Pro", "iPhone16,2": "iPhone 15 Pro Max",
+            // iPhone 16
             "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max",
             "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus",
             "iPhone17,5": "iPhone 16e",
+            // iPhone 17
             "iPhone18,1": "iPhone 17 Pro", "iPhone18,2": "iPhone 17 Pro Max",
             "iPhone18,3": "iPhone 17", "iPhone18,4": "iPhone Air",
+            // SE
+            "iPhone12,8": "iPhone SE (2nd generation)",
+            "iPhone14,6": "iPhone SE (3rd generation)",
+            // iPad (common)
             "iPad14,3": "iPad Pro 11", "iPad14,4": "iPad Pro 11",
             "iPad14,5": "iPad Pro 12.9", "iPad14,6": "iPad Pro 12.9",
             "iPad16,3": "iPad Pro 11", "iPad16,4": "iPad Pro 11",
