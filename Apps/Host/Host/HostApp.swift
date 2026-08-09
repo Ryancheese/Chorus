@@ -243,7 +243,7 @@ struct HostRootView: View {
                                 .foregroundStyle(GlassTheme.mint)
                             Text(speaker.displayName)
                                 .font(.system(.body, design: .rounded).weight(.medium))
-                            Text(speaker.platformLabel)
+                            Text(speaker.detailLabel)
                                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 8)

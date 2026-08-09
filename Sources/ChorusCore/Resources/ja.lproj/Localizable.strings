@@ -14,6 +14,9 @@
 "appearance.dark" = "ダーク";
 "action.close" = "閉じる";
 "action.start.broadcasting" = "ブロードキャストを開始";
+"speaker.display.name" = "Host に表示する名前";
+"speaker.display.name.placeholder" = "例：choiのiPhone";
+"speaker.display.model.hint" = "機種：%@（iOS は既定でカスタム端末名を共有しません）";
 "action.stop" = "停止";
 "action.connect" = "接続";
 "action.connect.all" = "すべて接続";

@@ -179,13 +179,20 @@ public final class PeerAdvertiser: ObservableObject {
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "chorus.advertiser")
-    private let deviceName: String
+    private var deviceName: String
     private var advertiseBonjour = true
     public var onConnection: ((NWConnection) -> Void)?
     public var onStatusChange: (() -> Void)?
 
     public init(deviceName: String) {
         self.deviceName = deviceName
+    }
+
+    /// Update Bonjour instance name used on the next `start()`.
+    public func updateDeviceName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        deviceName = trimmed
     }
 
     public func start() {

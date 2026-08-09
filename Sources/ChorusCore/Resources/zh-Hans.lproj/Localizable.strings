@@ -14,6 +14,9 @@
 "appearance.dark" = "黑夜";
 "action.close" = "关闭";
 "action.start.broadcasting" = "开始广播";
+"speaker.display.name" = "在 Host 上显示的名称";
+"speaker.display.name.placeholder" = "例如：choi的iPhone";
+"speaker.display.model.hint" = "本机型号：%@（系统默认不分享自定义设备名）";
 "action.stop" = "停止";
 "action.connect" = "连接";
 "action.connect.all" = "全部连接";

@@ -14,6 +14,9 @@
 "appearance.dark" = "Dark";
 "action.close" = "Close";
 "action.start.broadcasting" = "Start broadcasting";
+"speaker.display.name" = "Name shown on Host";
+"speaker.display.name.placeholder" = "e.g. Choi’s iPhone";
+"speaker.display.model.hint" = "Model: %@ (iOS does not share custom device names by default)";
 "action.stop" = "Stop";
 "action.connect" = "Connect";
 "action.connect.all" = "Connect all";

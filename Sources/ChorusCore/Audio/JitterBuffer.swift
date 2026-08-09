@@ -38,7 +38,10 @@ public final class AudioJitterBuffer {
         bufferedSamples += Int(header.sampleCount)
 
         if !started {
-            started = Double(bufferedSamples) / sampleRate >= targetDuration
+            // Mid-session joiners see high sequences — start after ~0.25s instead of full target.
+            let lateJoin = (pending.keys.min() ?? 0) > 0
+            let threshold = lateJoin ? min(targetDuration, 0.25) : targetDuration
+            started = Double(bufferedSamples) / sampleRate >= threshold
             if started, let minSeq = pending.keys.min() {
                 nextSequence = minSeq
             }

@@ -10,6 +10,7 @@ import UIKit
 #endif
 #if os(iOS)
 import Darwin
+import UniformTypeIdentifiers
 #endif
 
 @MainActor
@@ -69,8 +70,11 @@ public final class SpeakerSessionController: ObservableObject {
     /// Media volume / ringer tips (e.g. volume too low).
     @Published public private(set) var audioOutputWarning: String?
 
-    public let localDevice: DeviceInfo
+    public private(set) var localDevice: DeviceInfo
+    /// Editable label shown to Host (persisted). iOS hides the system device name without entitlement.
+    @Published public var preferredDisplayName: String
     private let advertiser: PeerAdvertiser
+    private static let displayNameKey = "chorus.speaker.displayName"
     private let audioOutputMonitor = AudioOutputMonitor()
     private var connection: SyncConnection?
     private var audioConnection: SyncConnection?
@@ -96,7 +100,8 @@ public final class SpeakerSessionController: ObservableObject {
     private var isAbortingForAudio = false
 
     public init(deviceName: String? = nil) {
-        let resolvedName = deviceName ?? Self.defaultSpeakerName()
+        let resolvedName = deviceName ?? Self.resolvedSpeakerName()
+        preferredDisplayName = resolvedName
         localDevice = DeviceInfo(
             id: UUID().uuidString,
             name: resolvedName,
@@ -127,6 +132,7 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     public func startAdvertising() {
+        applyDisplayName(preferredDisplayName, persist: true)
         lastError = nil
         audioDisruptionMessage = nil
         audioOutputMonitor.start()
@@ -141,6 +147,24 @@ public final class SpeakerSessionController: ObservableObject {
         #if os(iOS)
         refreshAudioEnvironmentHint()
         #endif
+    }
+
+    /// Set the name Host will see (hello / Bonjour). Empty falls back to model / system default.
+    public func applyDisplayName(_ raw: String, persist: Bool = true) {
+        let resolved = Self.normalizeDisplayName(raw) ?? Self.resolvedSpeakerName(ignoringStored: true)
+        preferredDisplayName = resolved
+        if persist {
+            UserDefaults.standard.set(resolved, forKey: Self.displayNameKey)
+        }
+        localDevice = DeviceInfo(
+            id: localDevice.id,
+            name: resolved,
+            role: .speaker,
+            protocolVersion: localDevice.protocolVersion,
+            platform: Self.platformIdentifier(),
+            model: Self.deviceModelName()
+        )
+        advertiser.updateDeviceName(resolved)
     }
 
     public func clearAudioDisruptionMessage() {
@@ -706,18 +730,16 @@ public final class SpeakerSessionController: ObservableObject {
     #endif
 
     public static func defaultSpeakerName() -> String {
-        #if os(iOS)
-        return UIDevice.current.name
-        #elseif os(macOS)
-        return Foundation.Host.current().localizedName ?? "Mac Speaker"
-        #else
-        return "Speaker"
-        #endif
+        resolvedSpeakerName()
     }
 
     public static func platformIdentifier() -> String {
         #if os(iOS)
-        return "ios"
+        #if targetEnvironment(macCatalyst)
+        return "macos"
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad ? "ipados" : "ios"
+        #endif
         #elseif os(macOS)
         return "macos"
         #else
@@ -725,9 +747,44 @@ public final class SpeakerSessionController: ObservableObject {
         #endif
     }
 
+    /// Prefer stored custom name; otherwise system name, or hardware model when iOS hides the custom name.
+    public static func resolvedSpeakerName(ignoringStored: Bool = false) -> String {
+        if !ignoringStored,
+           let stored = UserDefaults.standard.string(forKey: displayNameKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !stored.isEmpty {
+            return stored
+        }
+        #if os(iOS)
+        let systemName = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isGenericDeviceName(systemName), let model = deviceModelName() {
+            return model
+        }
+        return systemName.isEmpty ? (deviceModelName() ?? "iPhone") : systemName
+        #elseif os(macOS)
+        return Foundation.Host.current().localizedName ?? "Mac Speaker"
+        #else
+        return "Speaker"
+        #endif
+    }
+
+    private static func normalizeDisplayName(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func isGenericDeviceName(_ name: String) -> Bool {
+        ["iphone", "ipad", "ipod"].contains(name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
     /// Marketing-ish model string for Host UI (falls back to hw identifier).
     public static func deviceModelName() -> String? {
         #if os(iOS)
+        #if targetEnvironment(simulator)
+        if let sim = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"], !sim.isEmpty {
+            return marketingName(for: sim) ?? utTypeModelName(for: sim) ?? sim
+        }
+        #endif
         var systemInfo = utsname()
         uname(&systemInfo)
         let identifier = withUnsafePointer(to: &systemInfo.machine) {
@@ -736,7 +793,9 @@ public final class SpeakerSessionController: ObservableObject {
             }
         }
         guard !identifier.isEmpty else { return UIDevice.current.model }
-        return Self.marketingName(for: identifier) ?? identifier
+        return utTypeModelName(for: identifier)
+            ?? marketingName(for: identifier)
+            ?? identifier
         #elseif os(macOS)
         return Foundation.Host.current().localizedName
         #else
@@ -745,8 +804,23 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     #if os(iOS)
+    private static func utTypeModelName(for identifier: String) -> String? {
+        let phone = UTType("com.apple.phone")
+        let pad = UTType("com.apple.pad")
+        let tagClass = UTTagClass(rawValue: "com.apple.device-model-code")
+        for superType in [phone, pad].compactMap({ $0 }) {
+            if let type = UTType(tag: identifier, tagClass: tagClass, conformingTo: superType),
+               let name = type.localizedDescription?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !name.isEmpty {
+                return name
+            }
+        }
+        return nil
+    }
+
     private static func marketingName(for identifier: String) -> String? {
-        // Keep a short recent map; unknown ids still show the raw identifier.
+        // Keep a short recent map; unknown ids still show UTType / raw identifier.
         let map: [String: String] = [
             "iPhone14,2": "iPhone 13 Pro", "iPhone14,3": "iPhone 13 Pro Max",
             "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13",
@@ -757,6 +831,8 @@ public final class SpeakerSessionController: ObservableObject {
             "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max",
             "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus",
             "iPhone17,5": "iPhone 16e",
+            "iPhone18,1": "iPhone 17 Pro", "iPhone18,2": "iPhone 17 Pro Max",
+            "iPhone18,3": "iPhone 17", "iPhone18,4": "iPhone Air",
             "iPad14,3": "iPad Pro 11", "iPad14,4": "iPad Pro 11",
             "iPad14,5": "iPad Pro 12.9", "iPad14,6": "iPad Pro 12.9",
             "iPad16,3": "iPad Pro 11", "iPad16,4": "iPad Pro 11",

@@ -22,10 +22,16 @@ data class DeviceInfo(
 
     val displayName: String
         get() {
-            val trimmed = model?.trim().orEmpty()
-            if (trimmed.isEmpty()) return name
-            if (name.contains(trimmed, ignoreCase = true)) return name
-            return "$name · $trimmed"
+            val trimmedName = name.trim()
+            val trimmedModel = model?.trim().orEmpty()
+            val generic = trimmedName.equals("iPhone", true)
+                || trimmedName.equals("iPad", true)
+                || trimmedName.equals("Android", true)
+                || trimmedName.equals("Speaker", true)
+            if (generic && trimmedModel.isNotEmpty()) return trimmedModel
+            if (trimmedModel.isEmpty()) return trimmedName.ifEmpty { platformLabel }
+            if (trimmedName.contains(trimmedModel, ignoreCase = true)) return trimmedName
+            return "$trimmedName · $trimmedModel"
         }
 }
 

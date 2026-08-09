@@ -34,9 +34,12 @@ class AudioJitterBuffer(
         bufferedSamples += header.sampleCount
 
         if (!started) {
-            started = (bufferedSamples / sampleRate) >= targetDuration
+            val minSeq = pending.keys.minOrNull() ?: header.sequence
+            val lateJoin = minSeq > 0L
+            val threshold = if (lateJoin) minOf(targetDuration, 0.25) else targetDuration
+            started = (bufferedSamples / sampleRate) >= threshold
             if (started) {
-                nextSequence = pending.keys.minOrNull() ?: header.sequence
+                nextSequence = minSeq
             }
         }
         if (!started) return ready

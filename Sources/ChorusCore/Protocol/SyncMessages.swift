@@ -78,11 +78,23 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
     }
 
     /// Name plus model when available, for telling identical iPhones apart.
+    /// iOS 16+ often reports a generic name ("iPhone") without entitlement — prefer model then.
     public var displayName: String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !trimmedModel.isEmpty else { return name }
-        if name.localizedCaseInsensitiveContains(trimmedModel) { return name }
-        return "\(name) · \(trimmedModel)"
+        let genericNames: Set<String> = ["iphone", "ipad", "ipod", "android", "speaker", "macos"]
+        if genericNames.contains(trimmedName.lowercased()), !trimmedModel.isEmpty {
+            return trimmedModel
+        }
+        guard !trimmedModel.isEmpty else { return trimmedName }
+        if trimmedName.localizedCaseInsensitiveContains(trimmedModel) { return trimmedName }
+        return "\(trimmedName) · \(trimmedModel)"
+    }
+
+    /// Secondary chip: prefer hardware model over generic platform.
+    public var detailLabel: String {
+        let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmedModel.isEmpty ? platformLabel : trimmedModel
     }
 }
 

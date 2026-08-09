@@ -14,6 +14,9 @@
 "appearance.dark" = "다크";
 "action.close" = "닫기";
 "action.start.broadcasting" = "방송 시작";
+"speaker.display.name" = "Host에 표시될 이름";
+"speaker.display.name.placeholder" = "예: choi의 iPhone";
+"speaker.display.model.hint" = "기종: %@ (iOS는 기본적으로 사용자 기기 이름을 공유하지 않음)";
 "action.stop" = "중지";
 "action.connect" = "연결";
 "action.connect.all" = "모두 연결";

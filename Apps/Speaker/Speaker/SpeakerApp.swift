@@ -97,6 +97,10 @@ struct SpeakerRootView: View {
             glassStatus
                 .padding(.horizontal, 22)
 
+            displayNameField
+                .padding(.horizontal, 22)
+                .padding(.top, 16)
+
             Spacer(minLength: 28)
 
             primaryAction
@@ -118,6 +122,7 @@ struct SpeakerRootView: View {
 
                 VStack(spacing: 24) {
                     glassStatus
+                    displayNameField
                     primaryAction
                 }
                 .frame(maxWidth: 520)
@@ -243,6 +248,40 @@ struct SpeakerRootView: View {
                         .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
                 }
         }
+    }
+
+    private var displayNameField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.text("speaker.display.name"))
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(
+                L10n.text("speaker.display.name.placeholder"),
+                text: $session.preferredDisplayName
+            )
+            #if os(iOS)
+            .textInputAutocapitalization(.words)
+            .disableAutocorrection(true)
+            #endif
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.thinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.45), lineWidth: 1)
+                    }
+            }
+            .disabled(isBroadcasting)
+            .opacity(isBroadcasting ? 0.55 : 1)
+            if let model = SpeakerSessionController.deviceModelName() {
+                Text(L10n.format("speaker.display.model.hint", model))
+                    .font(.system(.caption2, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var primaryAction: some View {
