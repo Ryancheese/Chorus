@@ -756,7 +756,20 @@ public final class SpeakerSessionController: ObservableObject {
            let stored = UserDefaults.standard.string(forKey: displayNameKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !stored.isEmpty {
+            #if os(iOS)
+            // Older builds persisted raw hw ids (e.g. "iPhone12,1") as the display
+            // name. Migrate those to the retail marketing name on next launch.
+            if looksLikeHardwareIdentifier(stored) {
+                if let retail = marketingName(for: stored) ?? deviceModelName() {
+                    UserDefaults.standard.set(retail, forKey: displayNameKey)
+                    return retail
+                }
+            } else {
+                return stored
+            }
+            #else
             return stored
+            #endif
         }
         #if os(iOS)
         let systemName = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -773,7 +786,14 @@ public final class SpeakerSessionController: ObservableObject {
 
     private static func normalizeDisplayName(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        guard !trimmed.isEmpty else { return nil }
+        #if os(iOS)
+        if looksLikeHardwareIdentifier(trimmed),
+           let retail = marketingName(for: trimmed) {
+            return retail
+        }
+        #endif
+        return trimmed
     }
 
     private static func isGenericDeviceName(_ name: String) -> Bool {
@@ -809,6 +829,11 @@ public final class SpeakerSessionController: ObservableObject {
     }
 
     #if os(iOS)
+    /// True for Apple machine identifiers like "iPhone12,1" / "iPad14,3".
+    private static func looksLikeHardwareIdentifier(_ name: String) -> Bool {
+        name.range(of: #"^(iPhone|iPad|iPod)\d+,\d+$"#, options: .regularExpression) != nil
+    }
+
     private static func utTypeModelName(for identifier: String) -> String? {
         let phone = UTType("com.apple.phone")
         let pad = UTType("com.apple.pad")
