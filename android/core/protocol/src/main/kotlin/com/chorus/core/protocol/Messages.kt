@@ -16,9 +16,12 @@ data class DeviceInfo(
             "ipados" -> "iPad"
             "android" -> "Android"
             "windows" -> "Windows"
-            "macos", "mac" -> "Mac"
+            "macos", "mac" -> "MacBook"
             else -> if (role == DeviceRole.HOST) "Host" else "Speaker"
         }
+
+    /** Secondary chip under the name — platform family only. */
+    val detailLabel: String get() = platformLabel
 
     val displayName: String
         get() {

@@ -829,6 +829,11 @@ public final class HostSessionController: ObservableObject {
             try? await Task.sleep(nanoseconds: 700_000_000)
             guard self.currentSessionID == sessionID else { return }
 
+            // Fresh offset so the late joiner schedules on the shared timeline.
+            if let offset = self.synchronizers[ObjectIdentifier(connection)]?.bestEstimate?.offset {
+                connection.sendControl(.clockOffset(seconds: offset))
+            }
+
             connection.sendControl(.startPlayback(StartPlayback(
                 sessionID: sessionID,
                 hostPlayAt: hostPlayAt,
@@ -836,6 +841,8 @@ public final class HostSessionController: ObservableObject {
             )))
 
             // File/demo: existing stream tasks don't include this socket — push remaining chunks.
+            // Start slightly ahead of "now" so the first frames still have schedule runway
+            // (sending already-due frames makes Speakers rebase and desync).
             if let track {
                 guard let audio = self.audioByControl[ObjectIdentifier(connection)],
                       self.currentSessionID == sessionID
@@ -845,9 +852,9 @@ public final class HostSessionController: ObservableObject {
                     sessionID: sessionID,
                     hostPlayAtZero: hostPlayAt
                 )
-                let fromTime = HostTime.now() - 0.35
-                let remaining = chunks.filter { $0.0.hostPlayAt >= fromTime }
                 let targetBufferedAudio = min(max(1.1, lead * 0.9), 1.3)
+                let fromTime = HostTime.now() + 0.15
+                let remaining = chunks.filter { $0.0.hostPlayAt >= fromTime }
                 Task {
                     await Self.stream(remaining, to: audio, targetBufferedAudio: targetBufferedAudio)
                 }

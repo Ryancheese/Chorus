@@ -520,9 +520,12 @@ public final class SpeakerSessionController: ObservableObject {
         for chunk in jitterBuffer.append(header: header, pcm: pcm) {
             var localPlayAt = chunk.header.hostPlayAt + (playbackOffset ?? offset)
             let now = HostTime.now()
-            if localPlayAt <= now + 0.02 {
-                if !hasScheduledAudioForSession {
-                    // First chunk only: rebase so start isn't permanently late.
+            if !hasScheduledAudioForSession {
+                // Mid-session joiners get near-term chunks; a mild lateness must NOT
+                // rebase the timeline (that permanently desyncs vs phones already playing).
+                // Only rebase when hopelessly late — same threshold as Android.
+                let lateness = now - localPlayAt
+                if lateness > 0.40 {
                     let adjusted = now + 0.12
                     playbackOffset = (playbackOffset ?? offset) + (adjusted - localPlayAt)
                     localPlayAt = adjusted

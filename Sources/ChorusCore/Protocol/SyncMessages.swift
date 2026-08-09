@@ -65,14 +65,14 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
         self.model = model
     }
 
-    /// Short label for Host UI.
+    /// Short platform chip for Host UI (iPhone / iPad / Android / MacBook…).
     public var platformLabel: String {
         switch platform?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "ios": return "iPhone"
         case "ipados": return "iPad"
         case "android": return "Android"
         case "windows": return "Windows"
-        case "macos", "mac": return "Mac"
+        case "macos", "mac": return "MacBook"
         default: return role == .host ? "Host" : "Speaker"
         }
     }
@@ -82,7 +82,7 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
     public var displayName: String {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let genericNames: Set<String> = ["iphone", "ipad", "ipod", "android", "speaker", "macos"]
+        let genericNames: Set<String> = ["iphone", "ipad", "ipod", "android", "speaker", "macos", "macbook"]
         if genericNames.contains(trimmedName.lowercased()), !trimmedModel.isEmpty {
             return trimmedModel
         }
@@ -91,11 +91,8 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
         return "\(trimmedName) · \(trimmedModel)"
     }
 
-    /// Secondary chip: prefer hardware model over generic platform.
-    public var detailLabel: String {
-        let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmedModel.isEmpty ? platformLabel : trimmedModel
-    }
+    /// Secondary chip under the name — platform family only (not the model again).
+    public var detailLabel: String { platformLabel }
 }
 
 public struct ClockPing: Codable, Sendable {
