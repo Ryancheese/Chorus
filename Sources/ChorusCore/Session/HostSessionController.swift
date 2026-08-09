@@ -787,15 +787,18 @@ public final class HostSessionController: ObservableObject {
     /// When a speaker joins mid-playback / live stream: wait for clock, then unicast prepare+start
     /// on the original timeline so they can join without a full stop/restart.
     private func scheduleLateJoinCatchUp(for connection: SyncConnection, speakerName: String) {
+        #if os(macOS)
+        let liveStart = liveHostPlayAt
+        let liveRate = liveSampleRate
+        #else
+        let liveStart: TimeInterval? = nil
+        let liveRate = SyncProtocol.sampleRate
+        #endif
         guard let sessionID = currentSessionID,
-              let hostPlayAt = currentTrackStartAt ?? liveHostPlayAt
+              let hostPlayAt = currentTrackStartAt ?? liveStart
         else { return }
 
-        #if os(macOS)
-        let sampleRate = currentTrack?.sampleRate ?? liveSampleRate
-        #else
-        let sampleRate = currentTrack?.sampleRate ?? SyncProtocol.sampleRate
-        #endif
+        let sampleRate = currentTrack?.sampleRate ?? liveRate
         let title = currentTrack?.title
             ?? (isStreamingSystemAudio ? "Mac 系统音频" : "Session")
         let track = currentTrack
