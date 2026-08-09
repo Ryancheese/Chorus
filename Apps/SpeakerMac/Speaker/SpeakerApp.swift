@@ -48,7 +48,7 @@ struct SpeakerMacRootView: View {
                 glassStatus
                     .padding(.horizontal, 22)
 
-                Text("同一台电脑请勿同时运行 Chorus Host（会占用 17482 端口）。")
+                Text(L10n.text("help.speaker.mac.body"))
                     .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -186,16 +186,17 @@ struct SpeakerMacRootView: View {
     }
 
     private var utilityBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             LanguageMenu(settings: languageSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
             AppearanceMenu(settings: appearanceSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
             Button {
                 isHelpPresented = true
             } label: {
                 Image(systemName: "questionmark.circle")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
             }
+            .buttonStyle(GlassSecondaryButtonStyle())
             .accessibilityLabel(L10n.text("action.help"))
         }
     }

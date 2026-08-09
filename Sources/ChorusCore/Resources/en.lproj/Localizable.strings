@@ -52,8 +52,10 @@
 "help.host.playback.body" = "Choose audio or use Test tone, then tap Play in sync. Enable Play on this Mac too to include the MacBook speaker on the same timeline.";
 "help.host.system.title" = "Stream system audio";
 "help.host.system.body" = "Install BlackHole 2ch first. Starting system audio automatically routes system input and output to BlackHole, then restores your previous devices when stopped.";
-"help.speaker.title" = "Use this iPhone as a speaker";
-"help.speaker.body" = "Keep the iPhone and Mac on the same Wi-Fi. Tap Start broadcasting, then connect from the Mac. Playback can continue when this app is in the background.";
+"help.speaker.title" = "Use this device as a speaker";
+"help.speaker.body" = "Keep this device and the Host (Mac / Windows) on the same Wi‑Fi. Tap Start broadcasting, then discover and connect from the Host. If discovery fails, enter the IP shown here into the Host’s manual connect field.";
+"help.speaker.mac.title" = "Mac Speaker notes";
+"help.speaker.mac.body" = "Do not run Chorus Host on the same Mac at the same time — both use port 17482. Mac Speaker is meant as an extra speaker controlled by a Host on another computer.";
 "help.troubleshooting.title" = "Troubleshooting";
 "help.troubleshooting.body" = "Allow Local Network access on both devices. For system audio, allow Microphone access for Chorus Host. If a device disappears, start broadcasting again or use its displayed IP address. Corporate Wi‑Fi often blocks device-to-device traffic (client isolation) or multicast; if both discovery and manual connect fail, turn off VPN and use a personal hotspot or home network.";
 "app.speaker" = "Speaker";

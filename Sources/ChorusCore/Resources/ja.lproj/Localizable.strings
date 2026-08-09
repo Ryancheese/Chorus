@@ -52,8 +52,10 @@
 "help.host.playback.body" = "オーディオを選ぶかテストトーンを使用して「同期再生」をタップします。「この Mac でも再生」を有効にすると MacBook スピーカーも同じタイムラインで再生されます。";
 "help.host.system.title" = "システムオーディオを配信";
 "help.host.system.body" = "事前に BlackHole 2ch をインストールします。開始時にシステムの入出力を BlackHole に自動切替し、停止時に元のデバイスへ復元します。";
-"help.speaker.title" = "iPhone をスピーカーとして使う";
-"help.speaker.body" = "iPhone と Mac を同じ Wi-Fi に接続します。「ブロードキャストを開始」をタップしてから Mac で接続します。アプリをバックグラウンドにしても再生は続きます。";
+"help.speaker.title" = "この端末をスピーカーとして使う";
+"help.speaker.body" = "この端末と Host（Mac / Windows）を同じ Wi‑Fi に接続します。「ブロードキャストを開始」を押し、Host 側で検出して接続します。見つからない場合は、ここに表示された IP を Host の手動接続に入力してください。";
+"help.speaker.mac.title" = "Mac Speaker の注意";
+"help.speaker.mac.body" = "同じ Mac で Chorus Host を同時に起動しないでください。どちらも 17482 ポートを使います。Mac Speaker は、別のパソコン上の Host から制御する追加スピーカー向けです。";
 "help.troubleshooting.title" = "トラブルシューティング";
 "help.troubleshooting.body" = "両方のデバイスでローカルネットワークを許可してください。システムオーディオには Chorus Host のマイクアクセスも必要です。デバイスが消えた場合は再度ブロードキャストするか、表示された IP を使用します。会社の Wi‑Fi は端末間通信（クライアント分離）やマルチキャストを遮断することが多いです。自動検出も手動接続も失敗する場合は VPN を切り、テザリングや自宅ネットワークを使ってください。";
 "app.speaker" = "スピーカー";

@@ -52,8 +52,10 @@
 "help.host.playback.body" = "오디오를 선택하거나 테스트 톤을 사용한 다음 동기화 재생을 누르세요. 이 Mac에서도 재생을 켜면 MacBook 스피커도 같은 타임라인에서 재생됩니다.";
 "help.host.system.title" = "시스템 오디오 스트리밍";
 "help.host.system.body" = "먼저 BlackHole 2ch를 설치하세요. 시작하면 시스템 입출력이 BlackHole로 자동 전환되고, 중지하면 이전 장치로 복원됩니다.";
-"help.speaker.title" = "iPhone을 스피커로 사용";
-"help.speaker.body" = "iPhone과 Mac을 같은 Wi-Fi에 연결하세요. 방송 시작을 누른 후 Mac에서 연결합니다. 앱이 백그라운드에 있어도 재생은 계속됩니다.";
+"help.speaker.title" = "이 기기를 스피커로 사용";
+"help.speaker.body" = "이 기기와 Host(Mac / Windows)를 같은 Wi‑Fi에 연결하세요. 방송 시작을 누른 뒤 Host에서 검색해 연결합니다. 검색되지 않으면 여기에 표시된 IP를 Host 수동 연결에 입력하세요.";
+"help.speaker.mac.title" = "Mac Speaker 참고";
+"help.speaker.mac.body" = "같은 Mac에서 Chorus Host를 동시에 실행하지 마세요. 둘 다 17482 포트를 사용합니다. Mac Speaker는 다른 컴퓨터의 Host가 제어하는 추가 스피커용입니다.";
 "help.troubleshooting.title" = "문제 해결";
 "help.troubleshooting.body" = "두 기기에서 로컬 네트워크 접근을 허용하세요. 시스템 오디오에는 Chorus Host의 마이크 접근도 필요합니다. 장치가 사라지면 방송을 다시 시작하거나 표시된 IP 주소를 사용하세요. 회사 Wi‑Fi는 기기 간 통신(클라이언트 격리)이나 멀티캐스트를 막는 경우가 많습니다. 자동 검색과 수동 연결이 모두 실패하면 VPN을 끄고 개인 핫스팟이나 가정용 네트워크를 사용하세요.";
 "app.speaker" = "스피커";

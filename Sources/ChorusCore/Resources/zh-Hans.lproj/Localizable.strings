@@ -52,8 +52,10 @@
 "help.host.playback.body" = "选择音频、多选文件或整个文件夹加入播放列表，然后点“同步播放”。可上一首/下一首，并开启播完自动下一首。开启“本机同时播放”即可让 MacBook 扬声器走同一时间线。";
 "help.host.system.title" = "转播系统声音";
 "help.host.system.body" = "请先安装 BlackHole 2ch。开始转播会自动把系统输入和输出切到 BlackHole；停止后会恢复原设备。";
-"help.speaker.title" = "将 iPhone 用作扬声器";
-"help.speaker.body" = "确保 iPhone 与 Mac 在同一 Wi-Fi。点“开始广播”，再从 Mac 连接。切到后台后播放仍可继续。";
+"help.speaker.title" = "将本机用作扬声器";
+"help.speaker.body" = "确保本机与 Host（Mac / Windows）在同一 Wi‑Fi。点“开始广播”，再在 Host 端发现并连接；发现失败时可把本机显示的 IP 填进 Host“手动连接”。";
+"help.speaker.mac.title" = "Mac Speaker 注意";
+"help.speaker.mac.body" = "同一台电脑请勿同时运行 Chorus Host：两者都会占用 17482 端口。Mac Speaker 适合作为额外扬声器，由另一台电脑上的 Host 发起同步播放。";
 "help.troubleshooting.title" = "常见问题";
 "help.troubleshooting.body" = "请在两端允许“本地网络”权限。系统音频还需要允许 Chorus Host 使用麦克风。设备消失时，可重新开始广播或使用显示的 IP 地址。公司 Wi‑Fi 常会屏蔽设备互访（客户端隔离）或组播；若自动发现和手动连接都失败，请关掉 VPN，改用个人热点或家庭网络。";
 "app.speaker" = "扬声器";

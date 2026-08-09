@@ -255,16 +255,17 @@ struct SpeakerRootView: View {
     }
 
     private var utilityBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             LanguageMenu(settings: languageSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
             AppearanceMenu(settings: appearanceSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
             Button {
                 isHelpPresented = true
             } label: {
                 Image(systemName: "questionmark.circle")
-                    .font(.title3)
-                    .frame(width: 32, height: 32)
             }
+            .buttonStyle(GlassSecondaryButtonStyle())
             .accessibilityLabel(L10n.text("action.help"))
         }
     }
