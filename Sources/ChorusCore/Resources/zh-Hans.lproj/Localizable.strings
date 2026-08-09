@@ -9,6 +9,10 @@
 "action.help" = "使用帮助";
 "action.language" = "语言";
 "action.appearance" = "外观";
+"action.audio.settings" = "音频设置";
+"audio.effect.blobs" = "光斑随音乐";
+"audio.effect.torch" = "闪光灯节拍";
+"audio.effect.haptic" = "音乐触感";
 "appearance.system" = "跟随系统";
 "appearance.light" = "白天";
 "appearance.dark" = "黑夜";

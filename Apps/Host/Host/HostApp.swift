@@ -102,8 +102,7 @@ struct HostRootView: View {
         HStack(alignment: .center, spacing: 18) {
             PulsingOrb(
                 isActive: isLive,
-                symbol: session.phase == .playing ? "speaker.wave.3.fill" : "dot.radiowaves.left.and.right",
-                audioLevel: session.audioLevel
+                symbol: session.phase == .playing ? "speaker.wave.3.fill" : "dot.radiowaves.left.and.right"
             )
 
             VStack(alignment: .leading, spacing: 6) {

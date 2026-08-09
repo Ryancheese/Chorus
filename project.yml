@@ -85,6 +85,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Chorus
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: Chorus 需要局域网，才能被 Mac 发现并同步播放音频。
+        INFOPLIST_KEY_NSCameraUsageDescription: Chorus 需要相机权限，才能用闪光灯跟随音乐节拍（可选）。
         TARGETED_DEVICE_FAMILY: "1,2"
         LD_RUNPATH_SEARCH_PATHS: ["@executable_path/Frameworks"]
         CODE_SIGN_ENTITLEMENTS: Apps/Speaker/Speaker/Speaker.entitlements

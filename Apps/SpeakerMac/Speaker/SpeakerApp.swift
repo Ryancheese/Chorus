@@ -18,6 +18,7 @@ struct SpeakerMacRootView: View {
     @StateObject private var session = SpeakerSessionController()
     @StateObject private var languageSettings = LanguageSettings()
     @StateObject private var appearanceSettings = AppearanceSettings()
+    @StateObject private var audioAtmosphere = AudioAtmosphereSettings()
     @State private var appeared = false
     @State private var isHelpPresented = false
 
@@ -32,7 +33,11 @@ struct SpeakerMacRootView: View {
     var body: some View {
         let _ = languageSettings.selection
         ZStack {
-            LiquidGlassBackground(intensity: 1.15, audioLevel: session.audioLevel)
+            LiquidGlassBackground(
+                intensity: 1.15,
+                audioLevel: session.audioLevel,
+                reactsToAudio: audioAtmosphere.ambientBlobsEnabled
+            )
 
             VStack(spacing: 0) {
                 utilityBar
@@ -79,8 +84,7 @@ struct SpeakerMacRootView: View {
         VStack(spacing: 18) {
             PulsingOrb(
                 isActive: isBroadcasting,
-                symbol: isPlaying ? "speaker.wave.3.fill" : "hifispeaker.fill",
-                audioLevel: session.audioLevel
+                symbol: isPlaying ? "speaker.wave.3.fill" : "hifispeaker.fill"
             )
 
             VStack(spacing: 8) {
@@ -187,18 +191,37 @@ struct SpeakerMacRootView: View {
     }
 
     private var utilityBar: some View {
-        HStack(spacing: 12) {
+        ViewThatFits(in: .horizontal) {
+            utilityControls(iconOnly: false, compact: false, spacing: 10)
+            utilityControls(iconOnly: true, compact: true, spacing: 8)
+        }
+    }
+
+    private func utilityControls(iconOnly: Bool, compact: Bool, spacing: CGFloat) -> some View {
+        let stack = HStack(spacing: spacing) {
             LanguageMenu(settings: languageSettings)
-                .buttonStyle(GlassSecondaryButtonStyle())
             AppearanceMenu(settings: appearanceSettings)
-                .buttonStyle(GlassSecondaryButtonStyle())
+            AudioAtmosphereMenu(settings: audioAtmosphere)
             Button {
                 isHelpPresented = true
             } label: {
-                Image(systemName: "questionmark.circle")
+                if iconOnly {
+                    Image(systemName: "questionmark.circle")
+                } else {
+                    Label(L10n.text("action.help"), systemImage: "questionmark.circle")
+                }
             }
-            .buttonStyle(GlassSecondaryButtonStyle())
             .accessibilityLabel(L10n.text("action.help"))
+        }
+        .buttonStyle(GlassSecondaryButtonStyle(compact: compact))
+        .fixedSize(horizontal: true, vertical: false)
+
+        return Group {
+            if iconOnly {
+                stack.labelStyle(.iconOnly)
+            } else {
+                stack.labelStyle(.titleAndIcon)
+            }
         }
     }
 

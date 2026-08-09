@@ -19,6 +19,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Chorus 需要局域网，才能被 Mac 发现并同步播放音频。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Chorus 需要相机权限，才能用闪光灯跟随音乐节拍（可选）。</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_chorus._tcp</string>

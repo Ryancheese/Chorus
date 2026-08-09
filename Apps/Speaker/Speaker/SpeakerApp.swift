@@ -1,5 +1,8 @@
 import SwiftUI
 import ChorusCore
+#if os(iOS)
+import AVFoundation
+#endif
 
 @main
 struct SpeakerApp: App {
@@ -14,6 +17,7 @@ struct SpeakerRootView: View {
     @StateObject private var session = SpeakerSessionController()
     @StateObject private var languageSettings = LanguageSettings()
     @StateObject private var appearanceSettings = AppearanceSettings()
+    @StateObject private var audioAtmosphere = AudioAtmosphereSettings()
     @State private var appeared = false
     @State private var isHelpPresented = false
     @State private var liveActivityManager = SpeakerLiveActivityManager()
@@ -29,7 +33,11 @@ struct SpeakerRootView: View {
     var body: some View {
         let _ = languageSettings.selection
         ZStack {
-            LiquidGlassBackground(intensity: 1.15, audioLevel: session.audioLevel)
+            LiquidGlassBackground(
+                intensity: 1.15,
+                audioLevel: session.audioLevel,
+                reactsToAudio: audioAtmosphere.ambientBlobsEnabled
+            )
 
             GeometryReader { proxy in
                 ScrollView {
@@ -50,9 +58,39 @@ struct SpeakerRootView: View {
         }
         .onChange(of: session.phase) { _, phase in
             liveActivityManager.update(phase: phase, sessionTitle: session.sessionTitle)
+            if phase != .playing {
+                AudioReactiveEffects.shared.shutdown()
+            }
         }
         .onChange(of: session.sessionTitle) { _, title in
             liveActivityManager.update(phase: session.phase, sessionTitle: title)
+        }
+        .onChange(of: session.audioLevel) { _, level in
+            AudioReactiveEffects.shared.apply(
+                level: level,
+                settings: audioAtmosphere,
+                isPlaying: isPlaying
+            )
+        }
+        .onChange(of: audioAtmosphere.torchBeatEnabled) { _, enabled in
+            if enabled {
+                requestTorchPermissionIfNeeded()
+            }
+            AudioReactiveEffects.shared.apply(
+                level: session.audioLevel,
+                settings: audioAtmosphere,
+                isPlaying: isPlaying
+            )
+        }
+        .onChange(of: audioAtmosphere.hapticMusicEnabled) { _, _ in
+            AudioReactiveEffects.shared.apply(
+                level: session.audioLevel,
+                settings: audioAtmosphere,
+                isPlaying: isPlaying
+            )
+        }
+        .onDisappear {
+            AudioReactiveEffects.shared.shutdown()
         }
         .sheet(isPresented: $isHelpPresented) {
             ChorusHelpView(role: .speaker)
@@ -97,10 +135,6 @@ struct SpeakerRootView: View {
             glassStatus
                 .padding(.horizontal, 22)
 
-            displayNameField
-                .padding(.horizontal, 22)
-                .padding(.top, 16)
-
             Spacer(minLength: 28)
 
             primaryAction
@@ -122,7 +156,6 @@ struct SpeakerRootView: View {
 
                 VStack(spacing: 24) {
                     glassStatus
-                    displayNameField
                     primaryAction
                 }
                 .frame(maxWidth: 520)
@@ -139,8 +172,7 @@ struct SpeakerRootView: View {
         VStack(spacing: 18) {
             PulsingOrb(
                 isActive: isBroadcasting,
-                symbol: isPlaying ? "speaker.wave.3.fill" : "hifispeaker.fill",
-                audioLevel: session.audioLevel
+                symbol: isPlaying ? "speaker.wave.3.fill" : "hifispeaker.fill"
             )
 
             VStack(spacing: 8) {
@@ -251,40 +283,6 @@ struct SpeakerRootView: View {
         }
     }
 
-    private var displayNameField: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.text("speaker.display.name"))
-                .font(.system(.caption, design: .rounded).weight(.semibold))
-                .foregroundStyle(.secondary)
-            TextField(
-                L10n.text("speaker.display.name.placeholder"),
-                text: $session.preferredDisplayName
-            )
-            #if os(iOS)
-            .textInputAutocapitalization(.words)
-            .disableAutocorrection(true)
-            #endif
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.thinMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.45), lineWidth: 1)
-                    }
-            }
-            .disabled(isBroadcasting)
-            .opacity(isBroadcasting ? 0.55 : 1)
-            if let model = SpeakerSessionController.deviceModelName() {
-                Text(L10n.format("speaker.display.model.hint", model))
-                    .font(.system(.caption2, design: .rounded))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var primaryAction: some View {
         Button(action: toggle) {
             Text(isBroadcasting ? L10n.text("action.stop") : L10n.text("action.start.broadcasting"))
@@ -295,18 +293,38 @@ struct SpeakerRootView: View {
     }
 
     private var utilityBar: some View {
-        HStack(spacing: 12) {
+        // iPhone 11-class widths can't fit four labeled chips; fall back to icons.
+        ViewThatFits(in: .horizontal) {
+            utilityControls(iconOnly: false, compact: false, spacing: 10)
+            utilityControls(iconOnly: true, compact: true, spacing: 8)
+        }
+    }
+
+    private func utilityControls(iconOnly: Bool, compact: Bool, spacing: CGFloat) -> some View {
+        let stack = HStack(spacing: spacing) {
             LanguageMenu(settings: languageSettings)
-                .buttonStyle(GlassSecondaryButtonStyle())
             AppearanceMenu(settings: appearanceSettings)
-                .buttonStyle(GlassSecondaryButtonStyle())
+            AudioAtmosphereMenu(settings: audioAtmosphere)
             Button {
                 isHelpPresented = true
             } label: {
-                Image(systemName: "questionmark.circle")
+                if iconOnly {
+                    Image(systemName: "questionmark.circle")
+                } else {
+                    Label(L10n.text("action.help"), systemImage: "questionmark.circle")
+                }
             }
-            .buttonStyle(GlassSecondaryButtonStyle())
             .accessibilityLabel(L10n.text("action.help"))
+        }
+        .buttonStyle(GlassSecondaryButtonStyle(compact: compact))
+        .fixedSize(horizontal: true, vertical: false)
+
+        return Group {
+            if iconOnly {
+                stack.labelStyle(.iconOnly)
+            } else {
+                stack.labelStyle(.titleAndIcon)
+            }
         }
     }
 
@@ -318,5 +336,24 @@ struct SpeakerRootView: View {
                 session.stopAll()
             }
         }
+    }
+
+    private func requestTorchPermissionIfNeeded() {
+        #if os(iOS)
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if !granted {
+                    Task { @MainActor in
+                        audioAtmosphere.torchBeatEnabled = false
+                    }
+                }
+            }
+        case .authorized:
+            break
+        default:
+            audioAtmosphere.torchBeatEnabled = false
+        }
+        #endif
     }
 }

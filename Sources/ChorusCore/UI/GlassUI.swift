@@ -11,20 +11,23 @@ public enum GlassTheme {
 
 public struct LiquidGlassBackground: View {
     public var intensity: Double
-    /// 0–1 smoothed peak; drives blob size / travel like Apple Music ambient.
+    /// 0–1 smoothed peak; only blobs react (opacity / soft scale), not the UI chrome.
     public var audioLevel: Double
+    public var reactsToAudio: Bool
     @State private var phase: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
 
-    public init(intensity: Double = 1, audioLevel: Double = 0) {
+    public init(intensity: Double = 1, audioLevel: Double = 0, reactsToAudio: Bool = true) {
         self.intensity = intensity
         self.audioLevel = min(1, max(0, audioLevel))
+        self.reactsToAudio = reactsToAudio
     }
 
     public var body: some View {
-        let level = CGFloat(audioLevel)
-        let amp = 1 + level * 2.2
-        let breath = 1 + level * 0.42
+        // Keep motion gentle: large amp made the whole screen feel like it was shaking.
+        let level = reactsToAudio ? CGFloat(audioLevel) : 0
+        let amp = 1 + level * 0.35
+        let breath = 1 + level * 0.16
         ZStack {
             LinearGradient(
                 colors: backgroundColors,
@@ -33,29 +36,32 @@ public struct LiquidGlassBackground: View {
             )
 
             Circle()
-                .fill(GlassTheme.accentSoft.opacity((0.45 + 0.4 * audioLevel) * intensity))
+                .fill(GlassTheme.accentSoft.opacity((0.45 + 0.32 * Double(level)) * intensity))
                 .frame(width: 340 * breath, height: 340 * breath)
                 .blur(radius: 55)
-                .offset(x: -90 + 18 * amp * sin(phase), y: -160 + 12 * amp * cos(phase * 0.8))
+                .offset(x: -90 + 10 * amp * sin(phase), y: -160 + 8 * amp * cos(phase * 0.8))
+                .animation(.easeOut(duration: 0.18), value: audioLevel)
 
             Circle()
-                .fill(GlassTheme.mint.opacity((0.38 + 0.38 * audioLevel) * intensity))
+                .fill(GlassTheme.mint.opacity((0.38 + 0.28 * Double(level)) * intensity))
                 .frame(width: 280 * breath, height: 280 * breath)
                 .blur(radius: 50)
-                .offset(x: 120 + 14 * amp * cos(phase * 1.1), y: 40 + 16 * amp * sin(phase * 0.7))
+                .offset(x: 120 + 9 * amp * cos(phase * 1.1), y: 40 + 10 * amp * sin(phase * 0.7))
+                .animation(.easeOut(duration: 0.18), value: audioLevel)
 
             Circle()
                 .fill(
                     (colorScheme == .dark ? Color(red: 0.18, green: 0.23, blue: 0.32) : .white)
-                        .opacity((0.55 + 0.25 * audioLevel) * intensity)
+                        .opacity((0.55 + 0.18 * Double(level)) * intensity)
                 )
-                .frame(width: 220 * (1 + level * 0.28), height: 220 * (1 + level * 0.28))
+                .frame(width: 220 * (1 + level * 0.12), height: 220 * (1 + level * 0.12))
                 .blur(radius: 40)
-                .offset(x: 20 + 8 * level * cos(phase * 0.9), y: 180 + 10 * amp * sin(phase * 1.3))
+                .offset(x: 20 + 5 * level * cos(phase * 0.9), y: 180 + 6 * amp * sin(phase * 1.3))
+                .animation(.easeOut(duration: 0.18), value: audioLevel)
         }
         .ignoresSafeArea()
+        .compositingGroup()
         .animation(.easeInOut(duration: 0.55), value: colorScheme)
-        .animation(.easeOut(duration: 0.12), value: audioLevel)
         .onAppear {
             withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
                 phase = .pi * 2
@@ -158,14 +164,18 @@ public struct GlassPrimaryButtonStyle: ButtonStyle {
 }
 
 public struct GlassSecondaryButtonStyle: ButtonStyle {
-    public init() {}
+    public var compact: Bool
+
+    public init(compact: Bool = false) {
+        self.compact = compact
+    }
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            .font(.system(compact ? .body : .subheadline, design: .rounded).weight(.semibold))
             .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.horizontal, compact ? 10 : 16)
+            .padding(.vertical, compact ? 8 : 10)
             .background {
                 Capsule(style: .continuous)
                     .fill(.thinMaterial)
@@ -182,23 +192,22 @@ public struct GlassSecondaryButtonStyle: ButtonStyle {
 public struct PulsingOrb: View {
     public var isActive: Bool
     public var symbol: String
-    public var audioLevel: Double
 
     @State private var pulse = false
 
     public init(isActive: Bool, symbol: String = "waveform", audioLevel: Double = 0) {
         self.isActive = isActive
         self.symbol = symbol
-        self.audioLevel = min(1, max(0, audioLevel))
+        // audioLevel kept for call-site compatibility; UI chrome no longer beats with audio.
+        _ = audioLevel
     }
 
     public var body: some View {
-        let beat = 1 + CGFloat(audioLevel) * 0.22
         ZStack {
             Circle()
-                .fill(GlassTheme.accentSoft.opacity((isActive ? 0.28 : 0.12) + 0.22 * audioLevel))
+                .fill(GlassTheme.accentSoft.opacity(isActive ? 0.28 : 0.12))
                 .frame(width: 148, height: 148)
-                .scaleEffect((pulse && isActive ? 1.12 : 1) * beat)
+                .scaleEffect(pulse && isActive ? 1.12 : 1)
                 .blur(radius: 2)
 
             Circle()

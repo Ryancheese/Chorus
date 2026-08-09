@@ -9,6 +9,10 @@
 "action.help" = "ヘルプ";
 "action.language" = "言語";
 "action.appearance" = "外観";
+"action.audio.settings" = "オーディオ設定";
+"audio.effect.blobs" = "光の斑点を音楽に合わせる";
+"audio.effect.torch" = "フラッシュビート";
+"audio.effect.haptic" = "ミュージック触覚";
 "appearance.system" = "システムに合わせる";
 "appearance.light" = "ライト";
 "appearance.dark" = "ダーク";

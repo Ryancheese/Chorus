@@ -9,6 +9,10 @@
 "action.help" = "도움말";
 "action.language" = "언어";
 "action.appearance" = "모양";
+"action.audio.settings" = "오디오 설정";
+"audio.effect.blobs" = "빛 얼룩이 음악에 반응";
+"audio.effect.torch" = "플래시 비트";
+"audio.effect.haptic" = "뮤직 햅틱";
 "appearance.system" = "시스템 설정";
 "appearance.light" = "라이트";
 "appearance.dark" = "다크";

@@ -9,6 +9,10 @@
 "action.help" = "Help";
 "action.language" = "Language";
 "action.appearance" = "Appearance";
+"action.audio.settings" = "Audio effects";
+"audio.effect.blobs" = "Ambient blobs";
+"audio.effect.torch" = "Flashlight beat";
+"audio.effect.haptic" = "Music haptics";
 "appearance.system" = "System";
 "appearance.light" = "Light";
 "appearance.dark" = "Dark";
