@@ -100,7 +100,9 @@ public final class HostSessionController: ObservableObject {
             return
         }
         statusText = "正在连接 \(peer.name)…"
-        phase = .connected
+        if !hasActivePlaybackSession {
+            phase = .connected
+        }
         let control = NWConnection(to: peer.nwEndpoint, using: .tcp)
         let audio = NWConnection(to: peer.nwEndpoint, using: .tcp)
         attach(
@@ -108,6 +110,26 @@ public final class HostSessionController: ObservableObject {
             audio: SyncConnection(connection: audio, remoteLabel: "\(peer.endpointDebug)-audio"),
             displayName: peer.name
         )
+    }
+
+    /// Connect every discovered peer that is not already linked.
+    public func connectAll(to peers: [DiscoveredPeer]) {
+        let pending = peers.filter { peer in
+            !connections.contains(where: { $0.remoteLabel == peer.endpointDebug })
+        }
+        guard !pending.isEmpty else { return }
+        statusText = L10n.format("status.connecting.all", pending.count)
+        if !hasActivePlaybackSession {
+            phase = .connected
+        }
+        lastError = nil
+        for peer in pending {
+            connect(to: peer)
+        }
+    }
+
+    private var hasActivePlaybackSession: Bool {
+        currentSessionID != nil && (phase == .playing || isStreamingSystemAudio || currentTrack != nil)
     }
 
     /// Manual LAN connect when Bonjour discovery is blocked.
@@ -131,7 +153,9 @@ public final class HostSessionController: ObservableObject {
         }
 
         statusText = L10n.format("status.connecting.to", label)
-        phase = .connected
+        if !hasActivePlaybackSession {
+            phase = .connected
+        }
         let endpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(trimmed),
             port: NWEndpoint.Port(rawValue: port)!
@@ -545,7 +569,6 @@ public final class HostSessionController: ObservableObject {
 
     private func drainLiveChunkQueue() {
         guard liveSendTask == nil else { return }
-        let recipients = audioConnections
         liveSendTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self,
@@ -555,6 +578,8 @@ public final class HostSessionController: ObservableObject {
                     break
                 }
                 self.liveChunkQueue.removeFirst()
+                // Refresh recipients every frame so mid-session joiners get PCM.
+                let recipients = self.audioConnections
                 for connection in recipients {
                     guard !Task.isCancelled else { return }
                     await connection.sendAudio(header: frame.0, pcm: frame.1)
@@ -705,15 +730,13 @@ public final class HostSessionController: ObservableObject {
                 connectedSpeakers.append(info)
             }
             connection.sendControl(.welcome(localDevice))
-            phase = .syncingClock
-            statusText = "已连接 \(info.name)，校准时钟…"
+            admitSpeakerAfterHandshake(connection, name: info.name)
         case .welcome(let info):
             speakerConnections[info.id] = connection
             if !connectedSpeakers.contains(where: { $0.id == info.id }) {
                 connectedSpeakers.append(info)
             }
-            phase = .syncingClock
-            statusText = "已连接 \(info.name)，校准时钟…"
+            admitSpeakerAfterHandshake(connection, name: info.name)
         case .clockPong(let pong):
             let syncer = synchronizers[ObjectIdentifier(connection)]
             syncer?.recordPong(pong, hostReceiveTime: HostTime.now())
@@ -748,6 +771,93 @@ public final class HostSessionController: ObservableObject {
             }
         default:
             break
+        }
+    }
+
+    private func admitSpeakerAfterHandshake(_ connection: SyncConnection, name: String) {
+        if hasActivePlaybackSession {
+            statusText = "中途加入：\(name)，正在同步…"
+            scheduleLateJoinCatchUp(for: connection, speakerName: name)
+        } else {
+            phase = .syncingClock
+            statusText = "已连接 \(name)，校准时钟…"
+        }
+    }
+
+    /// When a speaker joins mid-playback / live stream: wait for clock, then unicast prepare+start
+    /// on the original timeline so they can join without a full stop/restart.
+    private func scheduleLateJoinCatchUp(for connection: SyncConnection, speakerName: String) {
+        guard let sessionID = currentSessionID,
+              let hostPlayAt = currentTrackStartAt ?? liveHostPlayAt
+        else { return }
+
+        #if os(macOS)
+        let sampleRate = currentTrack?.sampleRate ?? liveSampleRate
+        #else
+        let sampleRate = currentTrack?.sampleRate ?? SyncProtocol.sampleRate
+        #endif
+        let title = currentTrack?.title
+            ?? (isStreamingSystemAudio ? "Mac 系统音频" : "Session")
+        let track = currentTrack
+        let lead = max(adaptiveLeadTime.recommendedLeadTime, 1.4)
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for _ in 0..<25 {
+                if Task.isCancelled { return }
+                if self.synchronizers[ObjectIdentifier(connection)]?.bestEstimate != nil { break }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            guard self.currentSessionID == sessionID else { return }
+
+            // Wait for audio channel pairing before prepare so early PCM isn't dropped.
+            for _ in 0..<20 {
+                if self.audioByControl[ObjectIdentifier(connection)] != nil { break }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard self.currentSessionID == sessionID else { return }
+
+            connection.sendControl(.prepareSession(PrepareSession(
+                sessionID: sessionID,
+                sampleRate: sampleRate,
+                channels: SyncProtocol.channels,
+                title: title
+            )))
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard self.currentSessionID == sessionID else { return }
+
+            connection.sendControl(.startPlayback(StartPlayback(
+                sessionID: sessionID,
+                hostPlayAt: hostPlayAt,
+                leadTime: lead
+            )))
+
+            // File/demo: existing stream tasks don't include this socket — push remaining chunks.
+            if let track {
+                guard let audio = self.audioByControl[ObjectIdentifier(connection)],
+                      self.currentSessionID == sessionID
+                else { return }
+                let chunks = self.fileChunker.chunks(
+                    from: track,
+                    sessionID: sessionID,
+                    hostPlayAtZero: hostPlayAt
+                )
+                let fromTime = HostTime.now() - 0.35
+                let remaining = chunks.filter { $0.0.hostPlayAt >= fromTime }
+                let targetBufferedAudio = min(max(1.1, lead * 0.9), 1.3)
+                Task {
+                    await Self.stream(remaining, to: audio, targetBufferedAudio: targetBufferedAudio)
+                }
+            }
+
+            if self.phase != .playing {
+                self.phase = .playing
+            }
+            if self.isStreamingSystemAudio {
+                self.statusText = "正在转播 Mac 系统声音（已同步 \(speakerName)）"
+            } else {
+                self.statusText = "播放中：\(title)（已同步 \(speakerName)）"
+            }
         }
     }
 

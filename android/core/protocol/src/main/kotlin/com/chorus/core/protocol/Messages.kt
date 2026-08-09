@@ -7,6 +7,8 @@ data class DeviceInfo(
     val protocolVersion: Int = SyncProtocol.VERSION,
     /** Optional platform hint: ios / android / windows / macos. */
     val platform: String? = null,
+    /** Optional hardware model, e.g. "Pixel 8". */
+    val model: String? = null,
 ) {
     val platformLabel: String
         get() = when (platform?.trim()?.lowercase()) {
@@ -16,6 +18,14 @@ data class DeviceInfo(
             "windows" -> "Windows"
             "macos", "mac" -> "Mac"
             else -> if (role == DeviceRole.HOST) "Host" else "Speaker"
+        }
+
+    val displayName: String
+        get() {
+            val trimmed = model?.trim().orEmpty()
+            if (trimmed.isEmpty()) return name
+            if (name.contains(trimmed, ignoreCase = true)) return name
+            return "$name · $trimmed"
         }
 }
 

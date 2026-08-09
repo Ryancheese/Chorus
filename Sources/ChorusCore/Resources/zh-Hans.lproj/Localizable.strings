@@ -16,6 +16,8 @@
 "action.start.broadcasting" = "开始广播";
 "action.stop" = "停止";
 "action.connect" = "连接";
+"action.connect.all" = "全部连接";
+"status.connecting.all" = "正在连接 %d 台扬声器…";
 "action.disconnect" = "断开";
 "action.remove" = "移除";
 "action.choose.audio" = "选择音频";

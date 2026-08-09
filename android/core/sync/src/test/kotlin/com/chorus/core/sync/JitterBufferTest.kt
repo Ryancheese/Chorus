@@ -32,9 +32,10 @@ class JitterBufferTest {
     }
 
     @Test
-    fun reordersOutOfOrderChunks() {
+    fun reordersOutOfOrderChunksBeforeStart() {
         val sessionId = UUID.randomUUID().toString()
-        val jitter = AudioJitterBuffer(sampleRate = 44_100.0, targetDuration = 0.0)
+        // Buffer two chunks before starting so seq 0 can arrive out of order.
+        val jitter = AudioJitterBuffer(sampleRate = 2.0, targetDuration = 1.0)
         val pcm = ByteArray(4)
 
         fun header(seq: Long) = AudioChunkHeader(
@@ -50,5 +51,26 @@ class JitterBufferTest {
         assertEquals(2, ready.size)
         assertEquals(0L, ready[0].header.sequence)
         assertEquals(1L, ready[1].header.sequence)
+    }
+
+    @Test
+    fun lateJoinAnchorsToFirstBufferedSequence() {
+        val sessionId = UUID.randomUUID().toString()
+        val jitter = AudioJitterBuffer(sampleRate = 2.0, targetDuration = 1.0)
+        val pcm = ByteArray(4)
+
+        fun header(seq: Long) = AudioChunkHeader(
+            sessionId = sessionId,
+            sequence = seq,
+            sampleIndex = seq,
+            sampleCount = 1,
+            hostPlayAt = seq.toDouble(),
+        )
+
+        assertTrue(jitter.append(header(5000), pcm).isEmpty())
+        val ready = jitter.append(header(5001), pcm)
+        assertEquals(2, ready.size)
+        assertEquals(5000L, ready[0].header.sequence)
+        assertEquals(5001L, ready[1].header.sequence)
     }
 }

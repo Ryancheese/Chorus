@@ -8,6 +8,9 @@ import AVFoundation
 #if canImport(UIKit)
 import UIKit
 #endif
+#if os(iOS)
+import Darwin
+#endif
 
 @MainActor
 public final class SpeakerSessionController: ObservableObject {
@@ -98,7 +101,8 @@ public final class SpeakerSessionController: ObservableObject {
             id: UUID().uuidString,
             name: resolvedName,
             role: .speaker,
-            platform: Self.platformIdentifier()
+            platform: Self.platformIdentifier(),
+            model: Self.deviceModelName()
         )
         advertiser = PeerAdvertiser(deviceName: resolvedName)
         advertiser.onConnection = { [weak self] nw in
@@ -720,4 +724,45 @@ public final class SpeakerSessionController: ObservableObject {
         return "unknown"
         #endif
     }
+
+    /// Marketing-ish model string for Host UI (falls back to hw identifier).
+    public static func deviceModelName() -> String? {
+        #if os(iOS)
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let identifier = withUnsafePointer(to: &systemInfo.machine) {
+            $0.withMemoryRebound(to: CChar.self, capacity: 1) {
+                String(validatingUTF8: $0) ?? ""
+            }
+        }
+        guard !identifier.isEmpty else { return UIDevice.current.model }
+        return Self.marketingName(for: identifier) ?? identifier
+        #elseif os(macOS)
+        return Foundation.Host.current().localizedName
+        #else
+        return nil
+        #endif
+    }
+
+    #if os(iOS)
+    private static func marketingName(for identifier: String) -> String? {
+        // Keep a short recent map; unknown ids still show the raw identifier.
+        let map: [String: String] = [
+            "iPhone14,2": "iPhone 13 Pro", "iPhone14,3": "iPhone 13 Pro Max",
+            "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13",
+            "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus",
+            "iPhone15,2": "iPhone 14 Pro", "iPhone15,3": "iPhone 14 Pro Max",
+            "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus",
+            "iPhone16,1": "iPhone 15 Pro", "iPhone16,2": "iPhone 15 Pro Max",
+            "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max",
+            "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus",
+            "iPhone17,5": "iPhone 16e",
+            "iPad14,3": "iPad Pro 11", "iPad14,4": "iPad Pro 11",
+            "iPad14,5": "iPad Pro 12.9", "iPad14,6": "iPad Pro 12.9",
+            "iPad16,3": "iPad Pro 11", "iPad16,4": "iPad Pro 11",
+            "iPad16,5": "iPad Pro 13", "iPad16,6": "iPad Pro 13",
+        ]
+        return map[identifier]
+    }
+    #endif
 }

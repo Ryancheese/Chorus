@@ -98,6 +98,9 @@ object MessageCodec {
         if (!info.platform.isNullOrBlank()) {
             json.put("platform", info.platform)
         }
+        if (!info.model.isNullOrBlank()) {
+            json.put("model", info.model)
+        }
         return json
     }
 
@@ -109,6 +112,11 @@ object MessageCodec {
             protocolVersion = obj.optInt("protocolVersion", SyncProtocol.VERSION),
             platform = if (obj.has("platform") && !obj.isNull("platform")) {
                 obj.getString("platform").takeIf { it.isNotBlank() }
+            } else {
+                null
+            },
+            model = if (obj.has("model") && !obj.isNull("model")) {
+                obj.getString("model").takeIf { it.isNotBlank() }
             } else {
                 null
             },

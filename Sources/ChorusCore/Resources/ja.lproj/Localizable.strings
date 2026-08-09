@@ -16,6 +16,8 @@
 "action.start.broadcasting" = "ブロードキャストを開始";
 "action.stop" = "停止";
 "action.connect" = "接続";
+"action.connect.all" = "すべて接続";
+"status.connecting.all" = "%d 台のスピーカーに接続中…";
 "action.disconnect" = "切断";
 "action.remove" = "削除";
 "action.choose.audio" = "オーディオを選択";

@@ -16,6 +16,8 @@
 "action.start.broadcasting" = "방송 시작";
 "action.stop" = "중지";
 "action.connect" = "연결";
+"action.connect.all" = "모두 연결";
+"status.connecting.all" = "스피커 %d대 연결 중…";
 "action.disconnect" = "연결 해제";
 "action.remove" = "제거";
 "action.choose.audio" = "오디오 선택";

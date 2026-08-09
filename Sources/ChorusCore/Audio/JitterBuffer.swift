@@ -28,13 +28,20 @@ public final class AudioJitterBuffer {
     }
 
     /// Returns contiguous chunks once enough audio is buffered to start safely.
+    /// Mid-session joiners often see high sequence numbers — we anchor to the
+    /// earliest buffered sequence instead of waiting forever for sequence 0.
     public func append(header: AudioChunkHeader, pcm: Data) -> [Chunk] {
-        guard pending[header.sequence] == nil, header.sequence >= nextSequence else { return [] }
+        guard pending[header.sequence] == nil else { return [] }
+        if started && header.sequence < nextSequence { return [] }
+
         pending[header.sequence] = Chunk(header: header, pcm: pcm)
         bufferedSamples += Int(header.sampleCount)
 
         if !started {
             started = Double(bufferedSamples) / sampleRate >= targetDuration
+            if started, let minSeq = pending.keys.min() {
+                nextSequence = minSeq
+            }
         }
         guard started else { return [] }
 

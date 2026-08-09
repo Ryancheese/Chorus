@@ -16,6 +16,8 @@
 "action.start.broadcasting" = "Start broadcasting";
 "action.stop" = "Stop";
 "action.connect" = "Connect";
+"action.connect.all" = "Connect all";
+"status.connecting.all" = "Connecting %d speakers…";
 "action.disconnect" = "Disconnect";
 "action.remove" = "Remove";
 "action.choose.audio" = "Choose audio";

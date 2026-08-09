@@ -50,9 +50,15 @@ class SpeakerSession(
 ) : AutoCloseable {
     private val localDevice = DeviceInfo(
         id = UUID.randomUUID().toString(),
-        name = "${Build.MODEL}-Speaker",
+        name = Build.MODEL.ifBlank { "Android" },
         role = DeviceRole.SPEAKER,
         platform = "android",
+        model = listOf(Build.MANUFACTURER, Build.MODEL)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase() }
+            .joinToString(" ")
+            .ifBlank { null },
     )
 
     private val lock = Any()

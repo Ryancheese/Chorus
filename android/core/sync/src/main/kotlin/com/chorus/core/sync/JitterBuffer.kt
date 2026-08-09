@@ -5,6 +5,7 @@ import com.chorus.core.protocol.AudioChunkHeader
 /**
  * Holds received PCM briefly so Wi-Fi jitter does not turn into audible gaps.
  * Reorders by sequence and releases a contiguous run once ~[targetDuration] is buffered.
+ * Mid-session joiners anchor to the earliest buffered sequence (not zero).
  */
 class AudioJitterBuffer(
     private val sampleRate: Double,
@@ -26,14 +27,17 @@ class AudioJitterBuffer(
 
     fun append(header: AudioChunkHeader, pcm: ByteArray): List<Chunk> {
         val ready = ArrayList<Chunk>()
-        if (pending.containsKey(header.sequence) || header.sequence < nextSequence) {
-            return ready
-        }
+        if (pending.containsKey(header.sequence)) return ready
+        if (started && header.sequence < nextSequence) return ready
+
         pending[header.sequence] = Chunk(header, pcm)
         bufferedSamples += header.sampleCount
 
         if (!started) {
             started = (bufferedSamples / sampleRate) >= targetDuration
+            if (started) {
+                nextSequence = pending.keys.minOrNull() ?: header.sequence
+            }
         }
         if (!started) return ready
 

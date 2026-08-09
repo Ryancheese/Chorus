@@ -41,6 +41,8 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
     public var protocolVersion: UInt16
     /// Optional platform hint: ios / android / windows / macos.
     public var platform: String?
+    /// Optional hardware model, e.g. "iPhone 15 Pro", "Pixel 8".
+    public var model: String?
 
     public enum Role: String, Codable, Sendable {
         case host
@@ -52,13 +54,15 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
         name: String,
         role: Role,
         protocolVersion: UInt16 = SyncProtocol.version,
-        platform: String? = nil
+        platform: String? = nil,
+        model: String? = nil
     ) {
         self.id = id
         self.name = name
         self.role = role
         self.protocolVersion = protocolVersion
         self.platform = platform
+        self.model = model
     }
 
     /// Short label for Host UI.
@@ -71,6 +75,14 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
         case "macos", "mac": return "Mac"
         default: return role == .host ? "Host" : "Speaker"
         }
+    }
+
+    /// Name plus model when available, for telling identical iPhones apart.
+    public var displayName: String {
+        let trimmedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmedModel.isEmpty else { return name }
+        if name.localizedCaseInsensitiveContains(trimmedModel) { return name }
+        return "\(name) · \(trimmedModel)"
     }
 }
 

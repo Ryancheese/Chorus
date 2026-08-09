@@ -160,7 +160,19 @@ struct HostRootView: View {
     private var devicesPanel: some View {
         GlassPanel {
             VStack(alignment: .leading, spacing: 16) {
-                sectionTitle(L10n.text("section.nearby"), systemImage: "iphone.gen3")
+                HStack(alignment: .center, spacing: 12) {
+                    sectionTitle(L10n.text("section.nearby"), systemImage: "iphone.gen3")
+                    Spacer(minLength: 8)
+                    let pendingPeers = browser.peers.filter {
+                        !session.isConnected(endpointLabel: $0.endpointDebug)
+                    }
+                    if !pendingPeers.isEmpty {
+                        Button(L10n.text("action.connect.all")) {
+                            session.connectAll(to: pendingPeers)
+                        }
+                        .buttonStyle(GlassSecondaryButtonStyle())
+                    }
+                }
 
                 if let warning = network.warningText {
                     networkBanner(warning)
@@ -229,7 +241,7 @@ struct HostRootView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(GlassTheme.mint)
-                            Text(speaker.name)
+                            Text(speaker.displayName)
                                 .font(.system(.body, design: .rounded).weight(.medium))
                             Text(speaker.platformLabel)
                                 .font(.system(.caption2, design: .rounded).weight(.semibold))
