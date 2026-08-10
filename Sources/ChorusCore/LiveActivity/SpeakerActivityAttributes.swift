@@ -13,6 +13,14 @@ public enum SpeakerActivityStatus: String, Codable, Hashable, Sendable {
         }
     }
 
+    public var systemImage: String {
+        switch self {
+        case .waiting: "wifi"
+        case .connected: "checkmark.circle.fill"
+        case .playing: "play.fill"
+        }
+    }
+
     public static func from(phase: SpeakerSessionController.Phase) -> Self? {
         switch phase {
         case .idle, .error:
@@ -30,15 +38,23 @@ public enum SpeakerActivityStatus: String, Codable, Hashable, Sendable {
 #if os(iOS)
 import ActivityKit
 
-@available(iOS 16.1, *)
+@available(iOS 16.2, *)
 public struct SpeakerActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         public var status: SpeakerActivityStatus
-        public var contentTitle: String?
+        /// Playing track, or connected computer name when idle/connected.
+        public var centerTitle: String
+        /// Round-trip latency in milliseconds (nil until calibrated).
+        public var roundTripMs: Double?
 
-        public init(status: SpeakerActivityStatus, contentTitle: String?) {
+        public init(
+            status: SpeakerActivityStatus,
+            centerTitle: String,
+            roundTripMs: Double? = nil
+        ) {
             self.status = status
-            self.contentTitle = contentTitle
+            self.centerTitle = centerTitle
+            self.roundTripMs = roundTripMs
         }
     }
 

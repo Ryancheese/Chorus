@@ -1,1 +1,2 @@
 ﻿CFBundleDisplayName = "Chorus Speaker";
+"NSLocalNetworkUsageDescription" = "Chorus 需要同一 Wi‑Fi，才能被电脑端找到并一起同步播放。";

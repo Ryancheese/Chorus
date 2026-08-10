@@ -235,7 +235,7 @@ public struct PulsingOrb: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .symbolEffect(.variableColor.iterative, isActive: isActive)
+                .chorusSymbolEffectVariableColor(isActive: isActive)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {

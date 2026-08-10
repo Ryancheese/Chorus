@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Chorus Host</string>
+	<string>Chorus</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Chorus 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。</string>
+	<string>Chorus 需要同一 Wi‑Fi，才能找到附近的设备一起听。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Chorus 需要读取 BlackHole 虚拟音频输入，以统一延迟播放系统声音。</string>
+	<string>同步电脑正在播放的声音时，需要读取虚拟声卡输入。</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_chorus._tcp</string>

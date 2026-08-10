@@ -1,1 +1,2 @@
-"NSLocalNetworkUsageDescription" = "Chorus 需要局域网，才能被 Mac 发现并同步播放音频。";
+CFBundleDisplayName = "Chorus";
+"NSLocalNetworkUsageDescription" = "Chorus 需要同一 Wi‑Fi，才能让电脑找到这台设备一起听。";

@@ -1,8 +1,5 @@
 import SwiftUI
 import ChorusCore
-#if os(iOS)
-import AVFoundation
-#endif
 
 @main
 struct SpeakerApp: App {
@@ -20,6 +17,7 @@ struct SpeakerRootView: View {
     @StateObject private var audioAtmosphere = AudioAtmosphereSettings()
     @State private var appeared = false
     @State private var isHelpPresented = false
+    @State private var isOnboardingPresented = false
     @State private var liveActivityManager = SpeakerLiveActivityManager()
 
     private var isBroadcasting: Bool {
@@ -36,7 +34,7 @@ struct SpeakerRootView: View {
             LiquidGlassBackground(
                 intensity: 1.15,
                 audioLevel: session.audioLevel,
-                reactsToAudio: audioAtmosphere.ambientBlobsEnabled
+                reactsToAudio: audioAtmosphere.musicPulseEnabled
             )
 
             GeometryReader { proxy in
@@ -45,7 +43,7 @@ struct SpeakerRootView: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: proxy.size.height)
                 }
-                .scrollBounceBehavior(.basedOnSize)
+                .chorusScrollBounceBasedOnSize()
             }
             .opacity(appeared ? 1 : 0)
             .offset(y: appeared ? 0 : 18)
@@ -54,46 +52,56 @@ struct SpeakerRootView: View {
             withAnimation(.spring(response: 0.75, dampingFraction: 0.84)) {
                 appeared = true
             }
-            liveActivityManager.update(phase: session.phase, sessionTitle: session.sessionTitle)
-        }
-        .onChange(of: session.phase) { _, phase in
-            liveActivityManager.update(phase: phase, sessionTitle: session.sessionTitle)
-            if phase != .playing {
-                AudioReactiveEffects.shared.shutdown()
+            liveActivityManager.update(
+                phase: session.phase,
+                sessionTitle: session.sessionTitle,
+                hostName: session.hostName,
+                roundTripMs: session.roundTripMs
+            )
+            if !SpeakerOnboardingStore.isCompleted {
+                isOnboardingPresented = true
             }
         }
-        .onChange(of: session.sessionTitle) { _, title in
-            liveActivityManager.update(phase: session.phase, sessionTitle: title)
-        }
-        .onChange(of: session.audioLevel) { _, level in
-            AudioReactiveEffects.shared.apply(
-                level: level,
-                settings: audioAtmosphere,
-                isPlaying: isPlaying
+        .chorusOnChange(of: session.phase) { phase in
+            liveActivityManager.update(
+                phase: phase,
+                sessionTitle: session.sessionTitle,
+                hostName: session.hostName,
+                roundTripMs: session.roundTripMs
             )
         }
-        .onChange(of: audioAtmosphere.torchBeatEnabled) { _, enabled in
-            if enabled {
-                requestTorchPermissionIfNeeded()
-            }
-            AudioReactiveEffects.shared.apply(
-                level: session.audioLevel,
-                settings: audioAtmosphere,
-                isPlaying: isPlaying
+        .chorusOnChange(of: session.sessionTitle) { title in
+            liveActivityManager.update(
+                phase: session.phase,
+                sessionTitle: title,
+                hostName: session.hostName,
+                roundTripMs: session.roundTripMs
             )
         }
-        .onChange(of: audioAtmosphere.hapticMusicEnabled) { _, _ in
-            AudioReactiveEffects.shared.apply(
-                level: session.audioLevel,
-                settings: audioAtmosphere,
-                isPlaying: isPlaying
+        .chorusOnChange(of: session.hostName) { host in
+            liveActivityManager.update(
+                phase: session.phase,
+                sessionTitle: session.sessionTitle,
+                hostName: host,
+                roundTripMs: session.roundTripMs
             )
         }
-        .onDisappear {
-            AudioReactiveEffects.shared.shutdown()
+        .chorusOnChange(of: session.roundTripMs) { rtt in
+            liveActivityManager.update(
+                phase: session.phase,
+                sessionTitle: session.sessionTitle,
+                hostName: session.hostName,
+                roundTripMs: rtt
+            )
         }
         .sheet(isPresented: $isHelpPresented) {
             ChorusHelpView(role: .speaker)
+        }
+        .sheet(isPresented: $isOnboardingPresented) {
+            SpeakerOnboardingView {
+                SpeakerOnboardingStore.markCompleted()
+                isOnboardingPresented = false
+            }
         }
         .alert(
             L10n.text("alert.sync.exited.title"),
@@ -193,7 +201,7 @@ struct SpeakerRootView: View {
                 Text(session.phase.displayName)
                     .font(.system(.title2, design: .rounded).weight(.semibold))
                     .foregroundStyle(.primary)
-                    .contentTransition(.opacity)
+                    .chorusContentTransitionOpacity()
 
                 Text(session.statusText)
                     .font(.system(.body, design: .rounded))
@@ -293,9 +301,10 @@ struct SpeakerRootView: View {
     }
 
     private var utilityBar: some View {
-        // iPhone 11-class widths can't fit four labeled chips; fall back to icons.
-        ViewThatFits(in: .horizontal) {
+        // Narrow phones can't fit four labeled chips; fall back to icons.
+        ChorusHorizontalFitBar {
             utilityControls(iconOnly: false, compact: false, spacing: 10)
+        } fallback: {
             utilityControls(iconOnly: true, compact: true, spacing: 8)
         }
     }
@@ -336,24 +345,5 @@ struct SpeakerRootView: View {
                 session.stopAll()
             }
         }
-    }
-
-    private func requestTorchPermissionIfNeeded() {
-        #if os(iOS)
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                if !granted {
-                    Task { @MainActor in
-                        audioAtmosphere.torchBeatEnabled = false
-                    }
-                }
-            }
-        case .authorized:
-            break
-        default:
-            audioAtmosphere.torchBeatEnabled = false
-        }
-        #endif
     }
 }

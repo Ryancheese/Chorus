@@ -14,7 +14,7 @@ public struct ChorusHelpView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        ChorusNavigationContainer {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     if role == .host {

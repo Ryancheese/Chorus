@@ -36,8 +36,7 @@ object MessageCodec {
                 ControlPayload.AudioChannelHello((payload as JSONObject).optString("deviceID", ""))
             MessageType.STOP_ACKNOWLEDGED ->
                 ControlPayload.StopAcknowledged((payload as JSONObject).getString("sessionID"))
-            MessageType.CLOCK_OFFSET ->
-                ControlPayload.ClockOffset((payload as Number).toDouble())
+            MessageType.CLOCK_OFFSET -> decodeClockOffset(payload)
             MessageType.HEARTBEAT ->
                 ControlPayload.Heartbeat((payload as JSONObject).optString("deviceID", ""))
             MessageType.GOODBYE ->
@@ -46,6 +45,21 @@ object MessageCodec {
                 throw CodecException("audioChunk is binary, not JSON")
         }
     }
+
+    private fun decodeClockOffset(payload: Any): ControlPayload.ClockOffset =
+        when (payload) {
+            is Number -> ControlPayload.ClockOffset(payload.toDouble())
+            is JSONObject ->
+                ControlPayload.ClockOffset(
+                    seconds = payload.optDouble("seconds", 0.0),
+                    roundTrip = if (payload.has("rtt") && !payload.isNull("rtt")) {
+                        payload.getDouble("rtt")
+                    } else {
+                        null
+                    }
+                )
+            else -> throw CodecException("Invalid clockOffset payload")
+        }
 
     /** Binary audio frame: `[1B type][4B headerLen BE][header JSON][pcm]`. */
     fun encodeAudioFrame(header: AudioChunkHeader, pcm: ByteArray): ByteArray {
@@ -84,7 +98,11 @@ object MessageCodec {
             is ControlPayload.StopPlayback -> JSONObject().put("sessionID", payload.sessionId)
             is ControlPayload.AudioChannelHello -> JSONObject().put("deviceID", payload.deviceId)
             is ControlPayload.StopAcknowledged -> JSONObject().put("sessionID", payload.sessionId)
-            is ControlPayload.ClockOffset -> payload.seconds
+            is ControlPayload.ClockOffset -> {
+                val json = JSONObject().put("seconds", payload.seconds)
+                payload.roundTrip?.let { json.put("rtt", it) }
+                json
+            }
             is ControlPayload.Heartbeat -> JSONObject().put("deviceID", payload.deviceId)
             is ControlPayload.Goodbye -> JSONObject().put("deviceID", payload.deviceId)
         }

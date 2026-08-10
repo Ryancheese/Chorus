@@ -61,6 +61,7 @@ public final class SpeakerSessionController: ObservableObject {
     @Published public private(set) var lastError: String?
     @Published public private(set) var sessionTitle: String?
     @Published public private(set) var clockOffsetMs: Double?
+    @Published public private(set) var roundTripMs: Double?
     @Published public private(set) var isAdvertising = false
     @Published public private(set) var connectionAddress: String?
     /// Non-nil when sync was aborted due to mirroring / speaker occupation; UI should alert.
@@ -358,9 +359,12 @@ public final class SpeakerSessionController: ObservableObject {
             if phase != .playing {
                 phase = .ready
             }
-        case .clockOffset(let seconds):
+        case .clockOffset(let seconds, let roundTrip):
             offset = seconds
             clockOffsetMs = seconds * 1000
+            if let roundTrip {
+                roundTripMs = roundTrip * 1000
+            }
         case .prepareSession(let session):
             guard sync === connection else { return }
             #if os(iOS)
@@ -479,6 +483,8 @@ public final class SpeakerSessionController: ObservableObject {
             sessionTitle = nil
             lastError = nil
             audioDisruptionMessage = nil
+            clockOffsetMs = nil
+            roundTripMs = nil
             phase = .advertising
             statusText = "Mac 已移除本机，仍可等待新的连接"
         default:
@@ -614,6 +620,7 @@ public final class SpeakerSessionController: ObservableObject {
         hostName = nil
         sessionTitle = nil
         clockOffsetMs = nil
+        roundTripMs = nil
 
         lastError = message
         audioDisruptionMessage = message
@@ -821,9 +828,9 @@ public final class SpeakerSessionController: ObservableObject {
         }
         return systemName.isEmpty ? (deviceModelName() ?? "iPhone") : systemName
         #elseif os(macOS)
-        return Foundation.Host.current().localizedName ?? "Mac Speaker"
+        return Foundation.Host.current().localizedName ?? L10n.text("app.speaker")
         #else
-        return "Speaker"
+        return L10n.text("app.speaker")
         #endif
     }
 

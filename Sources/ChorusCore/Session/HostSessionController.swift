@@ -36,10 +36,23 @@ public final class HostSessionController: ObservableObject {
     @Published public private(set) var bestRTT: TimeInterval?
     @Published public private(set) var isPaused = false
     @Published public private(set) var isStreamingSystemAudio = false
+    /// Set when unified system-audio streaming needs BlackHole but it is missing.
+    @Published public private(set) var needsBlackHoleInstall = false
     /// Bumps when a local track finishes naturally so UI can auto-advance.
     @Published public private(set) var finishedTrackToken = UUID()
     /// 0–1 smoothed peak for liquid-glass audio reactivity.
     @Published public private(set) var audioLevel: Double = 0
+
+    /// In-flight control connections (includes peers still handshaking).
+    public var activeConnectionCount: Int { connections.count }
+
+    public func canAcceptAnotherSpeaker(isPro: Bool) -> Bool {
+        SpeakerConnectionPolicy.allowsConnection(currentCount: connections.count, isPro: isPro)
+    }
+
+    public func clearBlackHolePrompt() {
+        needsBlackHoleInstall = false
+    }
 
     public let localDevice: DeviceInfo
     private var connections: [SyncConnection] = []
@@ -175,7 +188,7 @@ public final class HostSessionController: ObservableObject {
     }
 
     public func attachIncoming(_ connection: NWConnection) {
-        attach(SyncConnection(connection: connection, remoteLabel: "speaker-incoming"), displayName: "Speaker")
+        attach(SyncConnection(connection: connection, remoteLabel: "speaker-incoming"), displayName: L10n.text("app.speaker"))
     }
 
     public func isConnected(endpointLabel: String) -> Bool {
@@ -488,10 +501,12 @@ public final class HostSessionController: ObservableObject {
             return
         }
         guard let blackHole = AudioDeviceList.blackHoleInput() else {
+            needsBlackHoleInstall = true
             lastError = L10n.text("error.blackhole.missing")
             phase = .error
             return
         }
+        needsBlackHoleInstall = false
         guard let output = AudioDeviceList.builtInOutput() else {
             lastError = L10n.text("error.output.missing")
             phase = .error
@@ -739,7 +754,7 @@ public final class HostSessionController: ObservableObject {
             }
             guard let self, self.pendingStopSessionIDs.remove(sessionID) != nil else { return }
             self.pausedStopSessionIDs.remove(sessionID)
-            self.lastError = "扬声器未确认停止，请检查连接状态"
+            self.lastError = "设备未确认停止，请检查连接状态"
         }
     }
 
@@ -813,7 +828,7 @@ public final class HostSessionController: ObservableObject {
             syncer?.recordPong(pong, hostReceiveTime: HostTime.now())
             bestRTT = syncer?.bestEstimate?.roundTrip
             if let offset = syncer?.bestEstimate?.offset {
-                connection.sendControl(.clockOffset(seconds: offset))
+                connection.sendControl(.clockOffset(seconds: offset, roundTrip: syncer?.bestEstimate?.roundTrip))
             }
             if let bestRTT {
                 adaptiveLeadTime.record(roundTrip: bestRTT)
@@ -830,7 +845,7 @@ public final class HostSessionController: ObservableObject {
             if let connection = speakerConnections[id] {
                 removePairedAudio(for: connection)
                 connection.cancel()
-                remove(connection, reason: "扬声器已退出同步")
+                remove(connection, reason: "设备已退出同步")
                 speakerConnections[id] = nil
             }
             connectedSpeakers.removeAll { $0.id == id }
@@ -901,8 +916,8 @@ public final class HostSessionController: ObservableObject {
             guard self.currentSessionID == sessionID else { return }
 
             // Fresh offset so the late joiner schedules on the shared timeline.
-            if let offset = self.synchronizers[ObjectIdentifier(connection)]?.bestEstimate?.offset {
-                connection.sendControl(.clockOffset(seconds: offset))
+            if let estimate = self.synchronizers[ObjectIdentifier(connection)]?.bestEstimate {
+                connection.sendControl(.clockOffset(seconds: estimate.offset, roundTrip: estimate.roundTrip))
             }
 
             connection.sendControl(.startPlayback(StartPlayback(
@@ -1008,9 +1023,9 @@ public final class HostSessionController: ObservableObject {
 
     public static func defaultHostName() -> String {
         #if os(macOS)
-        return Foundation.Host.current().localizedName ?? "Mac Host"
+        return Foundation.Host.current().localizedName ?? L10n.text("app.host")
         #else
-        return "Host"
+        return L10n.text("app.host")
         #endif
     }
 }

@@ -99,7 +99,7 @@ struct ChorusAppearanceModifier: ViewModifier {
             .onAppear {
                 appliedScheme = settings.selection.preferredColorScheme
             }
-            .onChange(of: settings.selection) { _, newValue in
+            .chorusOnChange(of: settings.selection) { newValue in
                 transition(to: newValue.preferredColorScheme)
             }
     }

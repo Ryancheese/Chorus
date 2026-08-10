@@ -15,7 +15,7 @@ Mac / Windows 播音频，同一 Wi‑Fi 下 iPhone / iPad / Android 近同步�
 ## 环境要求
 
 - macOS 14+（Apple Host / iOS Speaker）
-- iOS / iPadOS 17+
+- iOS / iPadOS 15+（音箱端；实时活动需 iOS 16.2+）
 - Android 8.0+（Android Speaker，见 [`android/`](android/)）
 - Xcode 15+（Apple 端）
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）

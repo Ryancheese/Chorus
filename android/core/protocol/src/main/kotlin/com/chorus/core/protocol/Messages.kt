@@ -110,7 +110,7 @@ sealed class ControlPayload {
         override val type = MessageType.STOP_ACKNOWLEDGED
     }
 
-    data class ClockOffset(val seconds: Double) : ControlPayload() {
+    data class ClockOffset(val seconds: Double, val roundTrip: Double? = null) : ControlPayload() {
         override val type = MessageType.CLOCK_OFFSET
     }
 

@@ -21,6 +21,7 @@ struct SpeakerMacRootView: View {
     @StateObject private var audioAtmosphere = AudioAtmosphereSettings()
     @State private var appeared = false
     @State private var isHelpPresented = false
+    @State private var isOnboardingPresented = false
 
     private var isBroadcasting: Bool {
         session.phase != .idle
@@ -36,7 +37,7 @@ struct SpeakerMacRootView: View {
             LiquidGlassBackground(
                 intensity: 1.15,
                 audioLevel: session.audioLevel,
-                reactsToAudio: audioAtmosphere.ambientBlobsEnabled
+                reactsToAudio: audioAtmosphere.musicPulseEnabled
             )
 
             VStack(spacing: 0) {
@@ -73,9 +74,18 @@ struct SpeakerMacRootView: View {
             withAnimation(.spring(response: 0.75, dampingFraction: 0.84)) {
                 appeared = true
             }
+            if !SpeakerOnboardingStore.isCompleted {
+                isOnboardingPresented = true
+            }
         }
         .sheet(isPresented: $isHelpPresented) {
             ChorusHelpView(role: .speaker)
+        }
+        .sheet(isPresented: $isOnboardingPresented) {
+            SpeakerOnboardingView {
+                SpeakerOnboardingStore.markCompleted()
+                isOnboardingPresented = false
+            }
         }
         .chorusAppearance(appearanceSettings)
     }
@@ -191,8 +201,9 @@ struct SpeakerMacRootView: View {
     }
 
     private var utilityBar: some View {
-        ViewThatFits(in: .horizontal) {
+        ChorusHorizontalFitBar {
             utilityControls(iconOnly: false, compact: false, spacing: 10)
+        } fallback: {
             utilityControls(iconOnly: true, compact: true, spacing: 8)
         }
     }

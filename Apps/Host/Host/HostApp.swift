@@ -21,11 +21,16 @@ struct HostRootView: View {
     @StateObject private var playlist = HostPlaylist()
     @StateObject private var languageSettings = LanguageSettings()
     @StateObject private var appearanceSettings = AppearanceSettings()
+    @StateObject private var audioAtmosphere = AudioAtmosphereSettings()
+    @StateObject private var proStore = ProEntitlementStore()
     @State private var playLocally = true
     @State private var isFileImporterPresented = false
     @State private var isFolderImporterPresented = false
     @State private var appeared = false
     @State private var isHelpPresented = false
+    @State private var isOnboardingPresented = false
+    @State private var isBlackHoleSheetPresented = false
+    @State private var isPaywallPresented = false
     @State private var manualHost = ""
     @State private var manualPort = String(SyncBonjour.controlPort)
     @State private var playlistError: String?
@@ -43,7 +48,10 @@ struct HostRootView: View {
     var body: some View {
         let _ = languageSettings.selection
         ZStack {
-            LiquidGlassBackground(audioLevel: session.audioLevel)
+            LiquidGlassBackground(
+                audioLevel: session.audioLevel,
+                reactsToAudio: audioAtmosphere.musicPulseEnabled
+            )
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
@@ -63,18 +71,26 @@ struct HostRootView: View {
             withAnimation(.spring(response: 0.7, dampingFraction: 0.86)) {
                 appeared = true
             }
+            if !HostOnboardingStore.isCompleted {
+                isOnboardingPresented = true
+            }
         }
         .onDisappear {
             browser.stop()
             network.stop()
             session.teardown()
         }
-        .onChange(of: session.finishedTrackToken) { _, _ in
+        .chorusOnChange(of: session.finishedTrackToken) { _ in
             // Small gap so the previous stop/prepare settle can land on speakers
             // before decoding + starting the next playlist item.
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 200_000_000)
                 playNextIfPossible()
+            }
+        }
+        .chorusOnChange(of: session.needsBlackHoleInstall) { needed in
+            if needed {
+                isBlackHoleSheetPresented = true
             }
         }
         .fileImporter(
@@ -94,6 +110,22 @@ struct HostRootView: View {
         .sheet(isPresented: $isHelpPresented) {
             ChorusHelpView(role: .host)
                 .frame(minWidth: 520, minHeight: 460)
+        }
+        .sheet(isPresented: $isOnboardingPresented) {
+            HostOnboardingView {
+                HostOnboardingStore.markCompleted()
+                isOnboardingPresented = false
+            }
+        }
+        .sheet(isPresented: $isBlackHoleSheetPresented, onDismiss: {
+            session.clearBlackHolePrompt()
+        }) {
+            BlackHoleInstallSheet()
+        }
+        .sheet(isPresented: $isPaywallPresented) {
+            if ChorusFeatureFlags.proPaywallEnabled {
+                ProPaywallView(store: proStore)
+            }
         }
         .chorusAppearance(appearanceSettings)
     }
@@ -115,6 +147,23 @@ struct HostRootView: View {
             }
 
             Spacer(minLength: 0)
+            if ChorusFeatureFlags.proPaywallEnabled {
+                if proStore.isPro {
+                    Text(L10n.text("pro.badge"))
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(GlassTheme.accent))
+                } else {
+                    Button {
+                        isPaywallPresented = true
+                    } label: {
+                        Label(L10n.text("action.upgrade.pro"), systemImage: "sparkles")
+                    }
+                    .buttonStyle(GlassSecondaryButtonStyle())
+                }
+            }
             Button {
                 isHelpPresented = true
             } label: {
@@ -124,6 +173,8 @@ struct HostRootView: View {
             LanguageMenu(settings: languageSettings)
                 .buttonStyle(GlassSecondaryButtonStyle())
             AppearanceMenu(settings: appearanceSettings)
+                .buttonStyle(GlassSecondaryButtonStyle())
+            AudioAtmosphereMenu(settings: audioAtmosphere)
                 .buttonStyle(GlassSecondaryButtonStyle())
         }
     }
@@ -171,10 +222,16 @@ struct HostRootView: View {
                     }
                     if !pendingPeers.isEmpty {
                         Button(L10n.text("action.connect.all")) {
-                            session.connectAll(to: pendingPeers)
+                            connectAllPending(pendingPeers)
                         }
                         .buttonStyle(GlassSecondaryButtonStyle())
                     }
+                }
+
+                if ChorusFeatureFlags.proPaywallEnabled, !proStore.isPro {
+                    Text(L10n.text("hint.free.limit"))
+                        .font(.system(.caption2, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
 
                 if let warning = network.warningText {
@@ -226,7 +283,7 @@ struct HostRootView: View {
                         if session.isConnected(endpointLabel: endpointLabel) {
                             session.disconnect(endpointLabel: endpointLabel)
                         } else {
-                            session.connect(host: manualHost, port: port)
+                            attemptManualConnect(host: manualHost, port: port)
                         }
                     }
                     .buttonStyle(GlassSecondaryButtonStyle())
@@ -335,6 +392,8 @@ struct HostRootView: View {
             Button(session.isStreamingSystemAudio ? L10n.text("action.stream.system.stop") : L10n.text("action.stream.system.start")) {
                 if session.isStreamingSystemAudio {
                     session.stop()
+                } else if AudioDeviceList.blackHoleInput() == nil {
+                    isBlackHoleSheetPresented = true
                 } else {
                     Task {
                         await session.startUnifiedSystemAudioStreaming()
@@ -495,11 +554,48 @@ struct HostRootView: View {
                 .buttonStyle(GlassSecondaryButtonStyle())
             } else {
                 Button(L10n.text("action.connect")) {
-                    session.connect(to: peer)
+                    attemptConnect(peer)
                 }
                 .buttonStyle(GlassSecondaryButtonStyle())
             }
         }
+    }
+
+    private var isProUnlocked: Bool {
+        !ChorusFeatureFlags.proPaywallEnabled || proStore.isPro
+    }
+
+    private func attemptConnect(_ peer: DiscoveredPeer) {
+        guard session.canAcceptAnotherSpeaker(isPro: isProUnlocked) else {
+            isPaywallPresented = true
+            return
+        }
+        session.connect(to: peer)
+    }
+
+    private func attemptManualConnect(host: String, port: UInt16) {
+        guard session.canAcceptAnotherSpeaker(isPro: isProUnlocked) else {
+            isPaywallPresented = true
+            return
+        }
+        session.connect(host: host, port: port)
+    }
+
+    private func connectAllPending(_ peers: [DiscoveredPeer]) {
+        let remaining = SpeakerConnectionPolicy.remainingFreeSlots(
+            currentCount: session.activeConnectionCount,
+            isPro: isProUnlocked
+        )
+        guard remaining > 0 else {
+            isPaywallPresented = true
+            return
+        }
+        if remaining == .max || peers.count <= remaining {
+            session.connectAll(to: peers)
+            return
+        }
+        session.connectAll(to: Array(peers.prefix(remaining)))
+        isPaywallPresented = true
     }
 
     private func sectionTitle(_ title: String, systemImage: String) -> some View {

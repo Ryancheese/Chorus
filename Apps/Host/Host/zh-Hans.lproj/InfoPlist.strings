@@ -1,2 +1,3 @@
-"NSLocalNetworkUsageDescription" = "Chorus 需要局域网，才能发现并连接附近的 iPhone / iPad 扬声器。";
-"NSMicrophoneUsageDescription" = "Chorus 需要读取 BlackHole 虚拟音频输入，以统一延迟播放系统声音。";
+CFBundleDisplayName = "Chorus";
+"NSLocalNetworkUsageDescription" = "Chorus 需要同一 Wi‑Fi，才能找到附近的设备一起听。";
+"NSMicrophoneUsageDescription" = "同步电脑正在播放的声音时，需要读取虚拟声卡输入。";

@@ -68,12 +68,13 @@ final class ProtocolTests: XCTestCase {
     }
 
     func testClockOffsetRoundTrip() throws {
-        let data = try MessageCodec.encodeControl(.clockOffset(seconds: -12.345))
+        let data = try MessageCodec.encodeControl(.clockOffset(seconds: -12.345, roundTrip: 0.04))
         let decoded = try MessageCodec.decodeControl(data)
-        guard case .clockOffset(let seconds) = decoded else {
+        guard case .clockOffset(let seconds, let rtt) = decoded else {
             return XCTFail("expected clock offset")
         }
         XCTAssertEqual(seconds, -12.345, accuracy: 0.000_001)
+        XCTAssertEqual(rtt ?? -1, 0.04, accuracy: 0.000_001)
     }
 
     @MainActor
@@ -167,4 +168,14 @@ final class ProtocolTests: XCTestCase {
         XCTAssertTrue(device.isBlackHole)
     }
     #endif
+
+    func testFreeSpeakerLimitPolicy() {
+        XCTAssertEqual(SpeakerConnectionPolicy.freeSpeakerLimit, 1)
+        XCTAssertTrue(SpeakerConnectionPolicy.allowsConnection(currentCount: 0, isPro: false))
+        XCTAssertFalse(SpeakerConnectionPolicy.allowsConnection(currentCount: 1, isPro: false))
+        XCTAssertTrue(SpeakerConnectionPolicy.allowsConnection(currentCount: 5, isPro: true))
+        XCTAssertEqual(SpeakerConnectionPolicy.remainingFreeSlots(currentCount: 0, isPro: false), 1)
+        XCTAssertEqual(SpeakerConnectionPolicy.remainingFreeSlots(currentCount: 1, isPro: false), 0)
+        XCTAssertEqual(SpeakerConnectionPolicy.remainingFreeSlots(currentCount: 3, isPro: true), .max)
+    }
 }

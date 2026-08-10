@@ -30,12 +30,21 @@ class MessageCodecTest {
     }
 
     @Test
-    fun encodeDecodeClockOffsetBareNumber() {
-        val encoded = MessageCodec.encodeControl(ControlPayload.ClockOffset(0.123))
+    fun encodeDecodeClockOffsetObject() {
+        val encoded = MessageCodec.encodeControl(ControlPayload.ClockOffset(0.123, 0.04))
         val json = String(encoded)
         assertTrue(json.contains("\"type\":13"))
-        assertTrue(json.contains("\"payload\":0.123"))
+        assertTrue(json.contains("\"seconds\""))
+        assertTrue(json.contains("\"rtt\""))
         val decoded = MessageCodec.decodeControl(encoded) as ControlPayload.ClockOffset
+        assertEquals(0.123, decoded.seconds, 1e-9)
+        assertEquals(0.04, decoded.roundTrip!!, 1e-9)
+    }
+
+    @Test
+    fun decodeClockOffsetBareNumberLegacy() {
+        val raw = """{"type":13,"payload":0.123}""".toByteArray()
+        val decoded = MessageCodec.decodeControl(raw) as ControlPayload.ClockOffset
         assertEquals(0.123, decoded.seconds, 1e-9)
     }
 

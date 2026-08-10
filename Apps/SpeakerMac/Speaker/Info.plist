@@ -9,7 +9,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Chorus 需要局域网，才能被 Host 发现并同步播放音频。</string>
+	<string>Chorus 需要同一 Wi‑Fi，才能被电脑端找到并一起同步播放。</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_chorus._tcp</string>

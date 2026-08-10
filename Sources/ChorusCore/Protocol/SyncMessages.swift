@@ -73,7 +73,7 @@ public struct DeviceInfo: Codable, Sendable, Hashable, Identifiable {
         case "android": return "Android"
         case "windows": return "Windows"
         case "macos", "mac": return "MacBook"
-        default: return role == .host ? "Host" : "Speaker"
+        default: return role == .host ? L10n.text("app.host") : L10n.text("app.speaker")
         }
     }
 
@@ -178,7 +178,7 @@ public enum ControlPayload: Codable, Sendable {
     case stopPlayback(sessionID: UUID)
     case audioChannelHello(deviceID: String)
     case stopAcknowledged(sessionID: UUID)
-    case clockOffset(seconds: TimeInterval)
+    case clockOffset(seconds: TimeInterval, roundTrip: TimeInterval? = nil)
     case heartbeat(deviceID: String)
     case goodbye(deviceID: String)
 
@@ -216,9 +216,13 @@ public enum ControlPayload: Codable, Sendable {
         case .stopAcknowledged(let sessionID):
             try container.encode(MessageType.stopAcknowledged, forKey: .type)
             try container.encode(["sessionID": sessionID.uuidString], forKey: .payload)
-        case .clockOffset(let seconds):
+        case .clockOffset(let seconds, let roundTrip):
             try container.encode(MessageType.clockOffset, forKey: .type)
-            try container.encode(seconds, forKey: .payload)
+            var payload: [String: Double] = ["seconds": seconds]
+            if let roundTrip {
+                payload["rtt"] = roundTrip
+            }
+            try container.encode(payload, forKey: .payload)
         case .heartbeat(let deviceID):
             try container.encode(MessageType.heartbeat, forKey: .type)
             try container.encode(["deviceID": deviceID], forKey: .payload)
@@ -260,7 +264,12 @@ public enum ControlPayload: Codable, Sendable {
             }
             self = .stopAcknowledged(sessionID: id)
         case .clockOffset:
-            self = .clockOffset(seconds: try container.decode(TimeInterval.self, forKey: .payload))
+            if let seconds = try? container.decode(TimeInterval.self, forKey: .payload) {
+                self = .clockOffset(seconds: seconds, roundTrip: nil)
+            } else {
+                let dict = try container.decode([String: Double].self, forKey: .payload)
+                self = .clockOffset(seconds: dict["seconds"] ?? 0, roundTrip: dict["rtt"])
+            }
         case .heartbeat:
             let dict = try container.decode([String: String].self, forKey: .payload)
             self = .heartbeat(deviceID: dict["deviceID"] ?? "")
