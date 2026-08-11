@@ -43,8 +43,16 @@ Windows 电脑也可作 Speaker：见 [ChorusForWindows](https://github.com/Ryan
 
 ### Android Speaker
 
+预编译 APK（侧载安装）：
+
+- [ChorusSpeaker-1.0.5.apk](https://github.com/Ryancheese/Chorus/releases/download/android-v1.0.5/ChorusSpeaker-1.0.5.apk)
+- Releases 页：https://github.com/Ryancheese/Chorus/releases
+
+也可自行编译：
+
 ```bash
 # 用 Android Studio 打开 android/ 目录，真机运行 app
+# 或：cd android && ./gradlew :app:assembleRelease
 # 详见 android/README.md
 ```
 

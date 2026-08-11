@@ -4,6 +4,14 @@
 
 协议与 [Windows ChorusNet](../../ChorusForWin/ChorusNet) / Apple `ChorusCore` **字节级兼容**。
 
+## 下载安装包
+
+预编译 APK：
+
+- [ChorusSpeaker-1.0.5.apk](https://github.com/Ryancheese/Chorus/releases/download/android-v1.0.5/ChorusSpeaker-1.0.5.apk)
+
+手机下载后直接安装；若系统拦截，允许「未知来源」。与 Host 同一 Wi‑Fi，关闭 VPN。
+
 ## 环境
 
 - Android Studio Ladybug+（或兼容 AGP 8.7 的版本）
